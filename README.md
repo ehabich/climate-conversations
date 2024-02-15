@@ -17,4 +17,4 @@ This repository uses climate change scientific papers and Reddit conversations t
 - `make lint`: Runs `pre-commit`.
 - `make test`: Runs test cases in the `test` directory.
 - `make run`: Runs the `main` function in the `project` folder.
-- `make`: Runs `lint` and adds poetry requirements to `requirements.txt` 
+- `make`: Runs `lint` and adds poetry requirements to `requirements.txt`
