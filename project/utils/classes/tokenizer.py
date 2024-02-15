@@ -5,15 +5,15 @@ removing punctuation. Also sentences the text.
 
 import logging
 import os
+
 import spacy
+
+from project.utils.constants import TOKENIZED_DATA_PATH
+from project.utils.functions import load_file_to_df
+
 
 nlp = spacy.load("en_core_web_sm")
 nlp.max_length = 4700000
-
-from project.utils.functions import load_file_to_df
-from project.utils.constants import (
-    TOKENIZED_DATA_PATH,
-)
 
 
 class Tokenizer:
@@ -90,12 +90,12 @@ class Tokenizer:
             )
 
             # Unpack processed text into separate columns
-            self.tokenized_df[f"{new_col}_sents"] = self.tokenized_df[new_col].apply(
-                lambda x: x["sents"]
-            )
-            self.tokenized_df[f"{new_col}_words"] = self.tokenized_df[new_col].apply(
-                lambda x: x["words"]
-            )
+            self.tokenized_df[f"{new_col}_sents"] = self.tokenized_df[
+                new_col
+            ].apply(lambda x: x["sents"])
+            self.tokenized_df[f"{new_col}_words"] = self.tokenized_df[
+                new_col
+            ].apply(lambda x: x["words"])
             self.tokenized_df[f"{new_col}_words_norm"] = self.tokenized_df[
                 new_col
             ].apply(lambda x: x["words_norm"])

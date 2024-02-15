@@ -1,11 +1,7 @@
 import ast
-import logging
-import time
-from io import BytesIO
 
 import pandas as pd
-import requests
-from PyPDF2 import PdfReader
+
 
 def load_file_to_df(
     filepath: str, load_tokenized=False, tokenized_cols=None
