@@ -19,6 +19,11 @@ certifi = "^2024.2.2"
 spacy = "^3.7.4"
 en_core_web_sm = {url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0.tar.gz"}
 moralstrength = "^0.2.13"
+torch = "^2.2.0"
+torchvision = "^0.17.0"
+pytorch-lightning = "^2.2.0.post0"
+transformers = "^4.38.1"
+bert-score = "^0.3.13"
 
 [build-system]
 requires = ["poetry-core"]

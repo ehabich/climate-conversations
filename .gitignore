@@ -135,5 +135,5 @@ dmypy.json
 
 #Project Data
 project_data/
-
 project/data/
+*.csv
