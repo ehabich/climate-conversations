@@ -5,15 +5,17 @@ Service for cleaning data.
 import os
 
 from project.cleaning.proquest_clean import ProquestClean
+from project.utils.constants import CLEANED_DATA_PATH, RAW_DATA_PATH
 from project.utils.functions import save
-from project.utils.constants import RAW_DATA_PATH, CLEANED_DATA_PATH
 
 
 def run_proquest_clean() -> None:
     """
     Cleans data exported from Proquest TDM.
     """
-    cleaner = ProquestClean(os.path.join(RAW_DATA_PATH, "proquest_data.parquet"))
+    cleaner = ProquestClean(
+        os.path.join(RAW_DATA_PATH, "proquest_data.parquet")
+    )
 
     cleaner.clean()
     save(
