@@ -23,7 +23,7 @@ def load_file_to_df(
 
     if ext.lower() in ["pickle", "pkl"]:
         df = pd.read_pickle(filepath)
-    elif ext["csv", "txt"]:
+    elif ext in ["csv", "txt"]:
         df = pd.read_csv(filepath)
     elif ext in ["xlsx", "xls"]:
         df = pd.read_excel(filepath)
