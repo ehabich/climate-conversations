@@ -10,6 +10,7 @@ import re
 import pandas as pd
 from bs4 import BeautifulSoup
 
+from project.utils.constants import ARTICLE_DATA_COLUMNS
 from project.utils.functions import load_file_to_df
 
 
@@ -24,6 +25,62 @@ class ProquestCleaner:
     def __init__(self, file_path):
         self.df = load_file_to_df(file_path)
         self.cleaned_df = None
+
+    def extract_article_text(self, text: str) -> str:
+        """
+        Extracts article text from the Proquest data.
+
+        Args:
+            text (str): text to extract article text from.
+
+        Returns:
+            str: extracted article text.
+        """
+        data = json.loads(text)["RECORD"]
+
+        if data.get("TextInfo"):
+            if data["TextInfo"].get("Text"):
+                text_xml = data["TextInfo"]["Text"]["#text"]
+            elif data["TextInfo"].get("HiddenText"):
+                text_xml = data["TextInfo"]["HiddenText"]
+            else:
+                text_xml = None
+
+            if text_xml:
+                text_soup = BeautifulSoup(text_xml, "lxml")
+                text = self.clean_article_text(text_soup.find_all("p"))
+
+                return text
+
+        return None
+
+    def extract_article_abstract(self, text: str) -> str:
+        """
+        Extracts article abstract from the Proquest data.
+
+        Args:
+            text (str): text to extract article abstract from.
+
+        Returns:
+            str: extracted article abstract.
+        """
+        data = json.loads(text)["RECORD"]
+
+        if data.get("Obj"):
+            if data["Obj"].get("Abstract"):
+                abstracts = data["Obj"]["Abstract"]
+                if isinstance(abstracts, list):
+                    abstract_xml = abstracts[0]["Medium"]["AbsText"]["#text"]
+                else:
+                    abstract_xml = data["Obj"]["Abstract"]["Medium"]["AbsText"][
+                        "#text"
+                    ]
+                abstract_soup = BeautifulSoup(abstract_xml, "lxml")
+                abstract = self.clean_article_text(abstract_soup.find_all("p"))
+
+                return abstract
+
+        return None
 
     @staticmethod
     def clean_text(text: str) -> str:
@@ -144,21 +201,52 @@ class ProquestCleaner:
             data_dict (dict): dictionary to store extracted attributes.
         """
         data_dict = {
-            "title": self.clean_text(data["Obj"]["TitleAtt"]["Title"]),
-            "publication_date": data["Obj"]["NumericDate"],
-            "num_pages": int(data["Obj"]["PageCount"]),
-            "pagination": data["Obj"]["PrintLocation"]["Pagination"],
-            "doi": None,
-            "publisher": data["DFS"]["PubFrosting"]["publisher"][
-                "PublisherName"
-            ],
-            "publication_title": data["DFS"]["PubFrosting"]["Title"],
-            "volume": int(data["DFS"]["GroupFrosting"]["Volume"]),
-            "issue": int(data["DFS"]["GroupFrosting"]["Issue"]),
+            "title": (
+                self.clean_text(data["Obj"]["TitleAtt"]["Title"])
+                if data["Obj"].get("TitleAtt")
+                else None
+            ),
+            "publication_date": (
+                data["Obj"]["NumericDate"]
+                if data["Obj"].get("NumericDate")
+                else None
+            ),
+            "num_pages": (
+                int(data["Obj"]["PageCount"])
+                if data["Obj"].get("PageCount")
+                else None
+            ),
+            "pagination": (
+                data["Obj"]["PrintLocation"]["Pagination"]
+                if data["Obj"].get("PrintLocation").get("Pagination")
+                else None
+            ),
+            "doi": (
+                data["Obj"]["ObjectIDs"]["ObjectID"][0]["DOI"]
+                if data["Obj"]["ObjectIDs"]["ObjectID"][0].get("DOI")
+                else None
+            ),
+            "publisher": (
+                data["DFS"]["PubFrosting"]["publisher"]["PublisherName"]
+                if data["DFS"]["PubFrosting"].get("publisher")
+                else None
+            ),
+            "publication_title": (
+                data["DFS"]["PubFrosting"]["Title"]
+                if data["DFS"]["PubFrosting"].get("Title")
+                else None
+            ),
+            "volume": (
+                int(data["DFS"]["GroupFrosting"]["Volume"])
+                if data["DFS"]["GroupFrosting"].get("Volume")
+                else None
+            ),
+            "issue": (
+                int(data["DFS"]["GroupFrosting"]["Issue"])
+                if data["DFS"]["GroupFrosting"].get("Issue")
+                else None
+            ),
         }
-
-        if data["Obj"]["ObjectIDs"]["ObjectID"][0].get("DOI"):
-            data_dict["doi"] = data["Obj"]["ObjectIDs"]["ObjectID"][0]["DOI"]
 
         return data_dict
 
@@ -174,32 +262,33 @@ class ProquestCleaner:
             str: extracted information.
         """
         data_dict = {}
+        for col in ARTICLE_DATA_COLUMNS:
+            data_dict[col] = None
+
         data = json.loads(text)["RECORD"]
 
         # extract and clean article text
-        text_xml = data["TextInfo"]["Text"]["#text"]
-        text_soup = BeautifulSoup(text_xml, "lxml")
-        text = self.clean_article_text(text_soup.find_all("p"))
-        data_dict["text"] = text
+        data_dict["article_text"] = self.extract_article_text(text)
 
-        # extract abstract
-        abstract_xml = data["Obj"]["Abstract"]["Medium"]["AbsText"]["#text"]
-        abstract_soup = BeautifulSoup(abstract_xml, "lxml")
-        abstract = self.clean_article_text(abstract_soup.find_all("p"))
-        data_dict["abstract"] = abstract
+        if data.get("Obj"):
+            # extract abstract
+            data_dict["abstract"] = self.extract_article_abstract(text)
 
-        # extract authors
-        contributors = data["Obj"]["Contributors"]["Contributor"]
-        authors = self.extract_authors(contributors)
-        data_dict["authors"] = authors
+            # extract authors
+            if data["Obj"].get("Contributors"):
+                contributors = data["Obj"]["Contributors"]["Contributor"]
+                authors = self.extract_authors(contributors)
+                data_dict["authors"] = authors
 
-        # extract key terms
-        terms_json = data["Obj"]["Terms"]
-        key_terms = self.extract_key_terms(terms_json)
-        data_dict["key_terms"] = key_terms
+            # extract key terms
+            if data["Obj"].get("Terms"):
+                terms_json = data["Obj"]["Terms"]
+                key_terms = self.extract_key_terms(terms_json)
+                data_dict["key_terms"] = key_terms
 
-        # extract article attributes
-        data_dict = data_dict | self.extract_artcle_attrs(data)
+            # extract article attributes
+            if data.get("DFS"):
+                data_dict = data_dict | self.extract_artcle_attrs(data)
 
         return data_dict
 
@@ -207,24 +296,13 @@ class ProquestCleaner:
         """
         Cleans the data.
         """
-        cleaned_dict = {
-            "title": [],
-            "publication_date": [],
-            "num_pages": [],
-            "pagination": [],
-            "doi": [],
-            "publisher": [],
-            "publication_title": [],
-            "volume": [],
-            "issue": [],
-            "text": [],
-            "abstract": [],
-            "authors": [],
-            "key_terms": [],
-        }
+        cleaned_dict = {}
+        for col in ARTICLE_DATA_COLUMNS:
+            cleaned_dict[col] = []
 
         for idx in self.df.index:
             row = self.df.loc[idx]
+            print(f"Cleaning row {idx} of {len(self.df)}...")
             article_info = self.extract_info(row["Data"])
             for key, value in article_info.items():
                 cleaned_dict[key].append(value)
