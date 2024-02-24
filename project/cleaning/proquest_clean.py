@@ -218,7 +218,8 @@ class ProquestCleaner:
             ),
             "pagination": (
                 data["Obj"]["PrintLocation"]["Pagination"]
-                if data["Obj"].get("PrintLocation").get("Pagination")
+                if data["Obj"].get("PrintLocation")
+                and data["Obj"].get("PrintLocation").get("Pagination")
                 else None
             ),
             "doi": (
@@ -268,7 +269,7 @@ class ProquestCleaner:
         data = json.loads(text)["RECORD"]
 
         # extract and clean article text
-        data_dict["article_text"] = self.extract_article_text(text)
+        data_dict["text"] = self.extract_article_text(text)
 
         if data.get("Obj"):
             # extract abstract

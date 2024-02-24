@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 
 
@@ -40,6 +42,9 @@ def save(df: pd.DataFrame, filepath: str) -> None:
         filepath (str): path to save the dataframe to.
     """
     ext = filepath.split(".")[-1]
+
+    if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath))
 
     if ext in ["pickle", "pkl"]:
         df.to_pickle(filepath)
