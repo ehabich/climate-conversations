@@ -9,7 +9,7 @@ TOKENIZED_DATA_PATH = os.path.join(PROJECT_PATH, "data", "tokenized")
 
 # files
 CLEANED_PROQUEST_FILE = os.path.join(
-    CLEANED_DATA_PATH, "proquest_data_cleaned.fea"
+    CLEANED_DATA_PATH, "proquest", "ES-journals_cleaned.parquet"
 )
 
 # data attributes
@@ -32,7 +32,8 @@ ARTICLE_DATA_COLUMNS = [
 # section headers
 SECTION_HEADERS_MAPPING = {
     "Introduction": "Introduction",
-    "Background": "Other",
+    "Purpose": "Introduction",
+    "Background": "Introduction",
     "Literature Review": "Other",
     "Literature review": "Other",
     "Related Works": "Other",
@@ -40,6 +41,8 @@ SECTION_HEADERS_MAPPING = {
     "Methodology": "Method",
     "Methods": "Method",
     "Method": "Method",
+    "Design and Methodology": "Method",
+    "Design": "Method",
     "Materials and methods": "Method",
     "Materials and Methods": "Method",
     "Experimental Design": "Method",
@@ -56,7 +59,7 @@ SECTION_HEADERS_MAPPING = {
     "Results": "Result",
     "Finding": "Result",
     "Findings": "Result",
-    "Discussion": "Conclusion",
+    "Discussion": "Result",
     "Conclusion": "Conclusion",
     "Conclusion and Future Work": "Conclusion",
     "Conclusions": "Conclusion",
@@ -64,6 +67,8 @@ SECTION_HEADERS_MAPPING = {
     "Conclusion and Recommendation": "Conclusion",
     "Conclusion and recommendations": "Conclusion",
     "Conclusion and Recommendations": "Conclusion",
+    "Future Directions": "Conclusion",
+    "Future directions": "Conclusion",
     "Implications": "Conclusion",
     "Policy Implications": "Conclusion",
     "Policy implications": "Conclusion",
@@ -86,3 +91,21 @@ SECTION_HEADERS_MAPPING = {
     "Author contributions": "Other",
     "Author Contributions": "Other",
 }
+
+PUNCTUATION_FILTER = [
+    ",",
+    ":",
+    ";",
+    "?",
+    "&",
+    "!",
+    "*",
+    "@",
+    "$",
+    "%",
+    "\\",
+    "`",
+    "``",
+    "|",
+    "/",
+]
