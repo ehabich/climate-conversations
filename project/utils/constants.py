@@ -7,6 +7,11 @@ CLEANED_DATA_PATH = os.path.join(PROJECT_PATH, "data", "cleaned")
 RAW_DATA_PATH = os.path.join(PROJECT_PATH, "data", "raw")
 TOKENIZED_DATA_PATH = os.path.join(PROJECT_PATH, "data", "tokenized")
 
+# files
+CLEANED_PROQUEST_FILE = os.path.join(
+    CLEANED_DATA_PATH, "proquest_data_cleaned.fea"
+)
+
 # data attributes
 ARTICLE_DATA_COLUMNS = [
     "title",
@@ -23,3 +28,61 @@ ARTICLE_DATA_COLUMNS = [
     "authors",
     "key_terms",
 ]
+
+# section headers
+SECTION_HEADERS_MAPPING = {
+    "Introduction": "Introduction",
+    "Background": "Other",
+    "Literature Review": "Other",
+    "Literature review": "Other",
+    "Related Works": "Other",
+    "Related Work": "Other",
+    "Methodology": "Method",
+    "Methods": "Method",
+    "Method": "Method",
+    "Materials and methods": "Method",
+    "Materials and Methods": "Method",
+    "Experimental Design": "Method",
+    "Experimental design": "Method",
+    "Data collection": "Method",
+    "Data Collection": "Method",
+    "Data Analysis": "Method",
+    "Data analysis": "Method",
+    "Data and Methodology": "Method",
+    "Data and methodology": "Method",
+    "Data collection and analysis": "Method",
+    "Data Collection and Analysis": "Method",
+    "Result": "Result",
+    "Results": "Result",
+    "Finding": "Result",
+    "Findings": "Result",
+    "Discussion": "Conclusion",
+    "Conclusion": "Conclusion",
+    "Conclusion and Future Work": "Conclusion",
+    "Conclusions": "Conclusion",
+    "Conclusion and recommendation": "Conclusion",
+    "Conclusion and Recommendation": "Conclusion",
+    "Conclusion and recommendations": "Conclusion",
+    "Conclusion and Recommendations": "Conclusion",
+    "Implications": "Conclusion",
+    "Policy Implications": "Conclusion",
+    "Policy implications": "Conclusion",
+    "Limitations": "Conclusion",
+    "Funding": "Other",
+    "Ethics Statement": "Other",
+    "Ethics statement": "Other",
+    "Acknowledgments": "Other",
+    "Acknowledgements": "Other",
+    "Acknowledgment": "Other",
+    "Acknowledgement": "Other",
+    "Conflict of interest": "Other",
+    "Conflist of Interest": "Other",
+    "Publisher's Note": "Other",
+    "Footnotes Disclaimer/Publisher’s Note": "Other",
+    "Publisher's note": "Other",
+    "Supplementary Material": "Other",
+    "Supplementary material": "Other",
+    "References": "Other",
+    "Author contributions": "Other",
+    "Author Contributions": "Other",
+}

@@ -33,7 +33,7 @@ def load_file_to_df(filepath: str) -> pd.DataFrame:
     return df
 
 
-def save(df: pd.DataFrame, filepath: str) -> None:
+def save_df_to_file(df: pd.DataFrame, filepath: str) -> None:
     """
     Saves the given dataframe out to the specified filepath.
 
