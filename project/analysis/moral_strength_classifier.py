@@ -5,9 +5,10 @@ import json
 import numpy as np
 import pandas as pd
 import gensim.downloader as api
-import warnings
 import argparse
 from datetime import datetime
+
+print('Finished Imports')
 
 parent_directory = os.path.abspath(os.path.join(os.getcwd(), '..', '..'))
 sys.path.append(parent_directory)
@@ -16,6 +17,8 @@ from project.utils.classes.tokenizer import Tokenizer
 from moralstrength.moralstrength import string_moral_values
 
 word_vectors = api.load("glove-twitter-200")
+
+print('Loaded Word Vectors')
 
 def load_data(subreddit=None, utc_start=None, utc_end=None, rows=None):
     
@@ -36,14 +39,17 @@ def load_data(subreddit=None, utc_start=None, utc_end=None, rows=None):
     comments_df = comments_df[~comments_df['body'].isin(['[removed]', '[deleted]'])]
     
     if rows:
-        comments_df = comments_df.head(rows)
-    
+        start_row, end_row = rows
+        comments_df = comments_df.iloc[start_row:end_row]
+    print(f'Filtered data for {subreddit}')
     return comments_df
 
 def tokenize_comments(df):
+    df.to_csv('comments.csv', index=False)
     tokenizer = Tokenizer(filepath='comments.csv', filename='tokenized_comments.csv')
     tokenizer.df = df
     tokenizer.process(cols_to_tokenize=[('body', 'tokenized_body')])
+    print('Tokenizer Complete')
     return tokenizer.tokenized_df
 
 def compute_similarity(comment, foundation_words):
@@ -82,12 +88,13 @@ def main(subreddit=None, utc_start=None, utc_end=None, rows=None):
     for comment in tokenized_comments['tokenized_body_words_norm']:
         classification_profile = classify_sentence_with_profile(comment, word_to_moral_foundation_expanded)
         classification_profiles.append(classification_profile)
-    
+    print('Finished Classification')
     # Convert classification profiles to DataFrame and merge with tokenized comments
     df_classification_profiles = pd.DataFrame(classification_profiles)
     result_df = pd.concat([tokenized_comments.reset_index(drop=True), df_classification_profiles.reset_index(drop=True)], axis=1)
     
-    filename = f"result_{subreddit}_{utc_start}_{utc_end}_{rows}.csv"
+    start_row, end_row = rows if rows else (None, None)
+    filename = f"result_{subreddit}_{utc_start}_{utc_end}_{start_row}_{end_row}.csv"
     result_df.to_csv(filename, index=False)
     print(f"Saved DataFrame to {filename}")
     
@@ -98,12 +105,17 @@ if __name__ == "__main__":
     parser.add_argument('--subreddit', type=str, required=True, help='Subreddit name')
     parser.add_argument('--utc_start', type=int, required=True, help='Start time in UTC')
     parser.add_argument('--utc_end', type=int, required=True, help='End time in UTC')
-    parser.add_argument('--rows', type=int, default=100, help='Number of rows to process')
+    parser.add_argument('--rows', type=str, help='Starting and ending row indices separated by comma')
 
     args = parser.parse_args()
 
-    result_df = main(subreddit=args.subreddit, utc_start=args.utc_start, utc_end=args.utc_end, rows=args.rows)
+    # Convert rows argument from string to tuple of integers
+    if args.rows:
+        rows = tuple(map(int, args.rows.split(',')))
+    else:
+        rows = None
+
+    result_df = main(subreddit=args.subreddit, utc_start=args.utc_start, utc_end=args.utc_end, rows=rows)
     print(result_df.head())
 
-
-#poetry run python moral_strength_classifier.py --subreddit worldnews --utc_start 1662654781 --utc_end 1662703120 --rows 100
+# poetry run python moral_strength_classifier.py --subreddit worldnews --utc_start 1662654781 --utc_end 1662703120 --rows 0,200

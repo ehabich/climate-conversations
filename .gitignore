@@ -137,3 +137,6 @@ dmypy.json
 project_data/
 project/data/
 *.csv
+
+#Bash Output
+*.out

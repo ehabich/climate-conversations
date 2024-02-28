@@ -24,6 +24,7 @@ torchvision = "^0.17.0"
 pytorch-lightning = "^2.2.0.post0"
 transformers = "^4.38.1"
 bert-score = "^0.3.13"
+pandas = "^2.2.1"
 
 [build-system]
 requires = ["poetry-core"]
