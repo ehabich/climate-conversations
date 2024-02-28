@@ -4,6 +4,10 @@ Implement Hugging Face abstractive summarization.
 Fine-Tune on journal abstracts --> titles.
 
 Authors: Kate Habich, Chanteria Milner
+Adapted from HuggingFace Abstractive Summarization Tutorial with TensorFlow.
+https://huggingface.co/docs/transformers/en/tasks/summarization
+https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/summarization-tf.ipynb#scrollTo=kTCFado4IrIc
+
 '''
 from datasets import load_dataset
 from transformers import AutoTokenizer, DataCollatorForSeq2Seq, create_optimizer, AdamWeightDecay, TFAutoModelForSeq2SeqLM
@@ -11,6 +15,10 @@ from functools import partial
 import evaluate
 import numpy as np
 import tensorflow as tf
+from transformers.keras_callbacks import KerasMetricCallback
+from transformers.utils import send_example_telemetry
+
+send_example_telemetry("summarization_notebook", framework="tensorflow")
 
 
 
@@ -32,9 +40,10 @@ def preprocess_data(dataset):
     tokenized_data = data.map(partial(prefix_text, 
                                       tokenizer = tokenizer), 
                               batched=True)
-    
+
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=checkpoint, return_tensors="tf")
     rouge = evaluate.load("rouge")
+
     optimizer = AdamWeightDecay(learning_rate=2e-5, weight_decay_rate=0.01)
     model = TFAutoModelForSeq2SeqLM.from_pretrained(checkpoint)
 
@@ -51,6 +60,17 @@ def preprocess_data(dataset):
     batch_size=16,
     collate_fn=data_collator,
     )  
+
+    model.compile(optimizer=optimizer)
+    metric_callback = KerasMetricCallback(metric_fn=partial(compute_metrics,
+                                                        tokenizer = tokenizer,
+                                                        rouge = rouge),
+                                           eval_dataset=tf_train_set)
+
+    model.fit(x=tf_train_set, 
+              validation_data=tf_test_set, 
+              epochs=3, 
+              callbacks=[metric_callback])
 
     return model
 
@@ -70,7 +90,7 @@ def prefix_text(examples, tokenizer):
     return model_inputs
 
 
-def compute_metrics(eval_pred, tokenizer):
+def compute_metrics(eval_pred, tokenizer, rouge):
     predictions, labels = eval_pred
     decoded_preds = tokenizer.batch_decode(predictions, skip_special_tokens=True)
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
