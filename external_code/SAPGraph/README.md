@@ -1,5 +1,5 @@
 # SAPGraph
-This repository contains code and data for paper [SAPGraph: Structure-aware Extractive Summarization for Scientific Papers with Heterogeneous Graph](https://aclanthology.org/2022.aacl-main.44/). 
+This repository contains code and data for paper [SAPGraph: Structure-aware Extractive Summarization for Scientific Papers with Heterogeneous Graph](https://aclanthology.org/2022.aacl-main.44/).
 
 ## Environment
 For pyTorch and DGL, I use
@@ -9,7 +9,7 @@ dgl==1.1.2+cu111
 ```
 Should install the right dgl package for your system and cuda, through https://www.dgl.ai/pages/start.html. Note that dgl-0.x.x is a bit differet with dgl-1.x.x.
 
-Run 
+Run
 ```
 pip install -r requirements.txt
 ```

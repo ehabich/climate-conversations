@@ -1,13 +1,11 @@
-import os
 import argparse
 import json
-import numpy as np
-from sklearn.preprocessing import normalize
-from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
-from scipy.linalg import norm
 import multiprocessing
-import traceback
+import os
 
+import numpy as np
+from scipy.linalg import norm
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from tqdm import tqdm
 
 # edits
@@ -38,7 +36,8 @@ def similarity_mat(doc_len, doc_vec):
             sim_mat[i][i] = 1.0
             for j in range(i + 1, m):
                 sim_mat[i][j] = round(
-                    cos_similarity(doc_vec[i + off_set], doc_vec[j + off_set]), 3
+                    cos_similarity(doc_vec[i + off_set], doc_vec[j + off_set]),
+                    3,
                 )
         tfidf[count] = sim_mat
         off_set = sum(doc_len[: count + 1])
@@ -86,7 +85,6 @@ def compress_array(doc_len, td, id2word, ents):
     """
     d = {}
     count, i = 0, 0
-    res = {}
 
     for i in range(len(td)):
         d[i] = {}
@@ -110,9 +108,13 @@ def main(args):
 
     # print("Save word2sent features of dataset %s to %s" % (args.dataset, saveFile))
     print(
-        "Save entity2sent features of dataset %s to %s" % (args.dataset, fw2s_savename)
+        "Save entity2sent features of dataset %s to %s"
+        % (args.dataset, fw2s_savename)
     )
-    print("Save sent2sent features of dataset %s to %s" % (args.dataset, fs2s_savename))
+    print(
+        "Save sent2sent features of dataset %s to %s"
+        % (args.dataset, fs2s_savename)
+    )
 
     f_ent = open(entFile, "r")
     ents = []
@@ -143,14 +145,18 @@ def main(args):
             for (
                 w,
                 tfidf_id,
-            ) in cntvector.vocabulary_.items():  # word -> tfidf matrix row number
+            ) in (
+                cntvector.vocabulary_.items()
+            ):  # word -> tfidf matrix row number
                 id2word[tfidf_id] = w  # tfidf_id is not word_id in vocab
             tfidfvector = compress_array(
                 doc_len, tfidf_weight, id2word, ents
             )  # 2d dict
             fw2s_out.write(json.dumps(tfidfvector) + "\n")
 
-            s2s_mat = similarity_mat(doc_len, tfidf_weight)  # dict with sec_id as key
+            s2s_mat = similarity_mat(
+                doc_len, tfidf_weight
+            )  # dict with sec_id as key
             fs2s_out.write(json.dumps(s2s_mat) + "\n")
 
             count += 1
@@ -185,9 +191,13 @@ def train_worker(worker_id, args):
     fs2s_savename = os.path.join(save_dir, fs2s_name)
 
     print(
-        "Save entity2sent features of dataset %s to %s" % (args.dataset, fw2s_savename)
+        "Save entity2sent features of dataset %s to %s"
+        % (args.dataset, fw2s_savename)
     )
-    print("Save sent2sent features of dataset %s to %s" % (args.dataset, fs2s_savename))
+    print(
+        "Save sent2sent features of dataset %s to %s"
+        % (args.dataset, fs2s_savename)
+    )
 
     f_ent = open(entFile, "r")
     ents = []
@@ -223,21 +233,25 @@ def train_worker(worker_id, args):
             for (
                 w,
                 tfidf_id,
-            ) in cntvector.vocabulary_.items():  # word -> tfidf matrix row number
+            ) in (
+                cntvector.vocabulary_.items()
+            ):  # word -> tfidf matrix row number
                 id2word[tfidf_id] = w  # tfidf_id is not word_id in vocab
             tfidfvector = compress_array(
                 doc_len, tfidf_weight, id2word, ents
             )  # 2d dict
             fw2s_out.write(json.dumps(tfidfvector) + "\n")
 
-            s2s_mat = similarity_mat(doc_len, tfidf_weight)  # dict with sec_id as key
+            s2s_mat = similarity_mat(
+                doc_len, tfidf_weight
+            )  # dict with sec_id as key
             fs2s_out.write(json.dumps(s2s_mat) + "\n")
 
             count += 1
 
 
 def train_merge(args):
-    save_dir = os.path.join(CLEANED_DATA_PATH, args.dataset)
+    os.path.join(CLEANED_DATA_PATH, args.dataset)
 
 
 if __name__ == "__main__":
@@ -248,7 +262,9 @@ if __name__ == "__main__":
         default="data/cordSum/train.label.jsonl",
         help="File to deal with",
     )
-    parser.add_argument("--dataset", type=str, default="cordSum", help="dataset name")
+    parser.add_argument(
+        "--dataset", type=str, default="cordSum", help="dataset name"
+    )
     args = parser.parse_args()
 
     if "train" in args.data_path:

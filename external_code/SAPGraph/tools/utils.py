@@ -1,48 +1,69 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-import re
-import os
-import shutil
 import copy
-import datetime
-import numpy as np
+import re
+import sys
 
+import numpy as np
 from rouge import Rouge
 
 from .logger import *
 
-import sys
+
 sys.setrecursionlimit(10000)
 
 _ROUGE_PATH = ""
 
 
-REMAP = {"-lrb-": "(", "-rrb-": ")", "-lcb-": "{", "-rcb-": "}", 
-        "-lsb-": "[", "-rsb-": "]", "``": '"', "''": '"'} 
+REMAP = {
+    "-lrb-": "(",
+    "-rrb-": ")",
+    "-lcb-": "{",
+    "-rcb-": "}",
+    "-lsb-": "[",
+    "-rsb-": "]",
+    "``": '"',
+    "''": '"',
+}
 
 
-def clean(x): 
+def clean(x):
     x = x.lower()
-    return re.sub( 
-            r"-lrb-|-rrb-|-lcb-|-rcb-|-lsb-|-rsb-|``|''", 
-            lambda m: REMAP.get(m.group()), x)
+    return re.sub(
+        r"-lrb-|-rrb-|-lcb-|-rcb-|-lsb-|-rsb-|``|''",
+        lambda m: REMAP.get(m.group()),
+        x,
+    )
+
 
 def rouge_eval(hyps, refer):
     rouge = Rouge()
     try:
         score = rouge.get_scores(hyps, refer)[0]
-        mean_score = np.mean([score["rouge-1"]["f"], score["rouge-2"]["f"], score["rouge-l"]["f"]])
+        mean_score = np.mean(
+            [
+                score["rouge-1"]["f"],
+                score["rouge-2"]["f"],
+                score["rouge-l"]["f"],
+            ]
+        )
     except:
         mean_score = 0.0
     return mean_score
+
 
 def rouge_all(hyps, refer):
     rouge = Rouge()
     score = rouge.get_scores(hyps, refer)[0]
     return score
 
+
 def eval_label(match_true, pred, true, total, match):
-    match_true, pred, true, match = match_true.float(), pred.float(), true.float(), match.float()
+    match_true, pred, true, match = (
+        match_true.float(),
+        pred.float(),
+        true.float(),
+        match.float(),
+    )
     try:
         accu = match / total
         precision = match_true / pred

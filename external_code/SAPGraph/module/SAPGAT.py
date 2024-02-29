@@ -1,29 +1,66 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
-
-import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from module_ffn.SAPGATMultiLayer import MultiHeadSGATLayer, MultiHeadLayer
-from module_ffn.SAPGATLayer import PositionwiseFeedForward, WSGATLayer, SWGATLayer
+from external_code.SAPGraph.module.SAPGATLayer import (
+    PositionwiseFeedForward,
+    SWGATLayer,
+    WSGATLayer,
+)
+from external_code.SAPGraph.module.SAPGATMultiLayer import (
+    MultiHeadLayer,
+    MultiHeadSGATLayer,
+)
+
 
 class WSWGAT(nn.Module):
-    def __init__(self, in_dim, out_dim, num_heads, attn_drop_out, ffn_inner_hidden_size, ffn_drop_out, feat_embed_size, layerType):
+    def __init__(
+        self,
+        in_dim,
+        out_dim,
+        num_heads,
+        attn_drop_out,
+        ffn_inner_hidden_size,
+        ffn_drop_out,
+        feat_embed_size,
+        layerType,
+    ):
         super().__init__()
         self.layerType = layerType
         if layerType == "W2S":
-            self.layer = MultiHeadLayer(in_dim, int(out_dim / num_heads), num_heads, attn_drop_out, feat_embed_size, layer=WSGATLayer)
+            self.layer = MultiHeadLayer(
+                in_dim,
+                int(out_dim / num_heads),
+                num_heads,
+                attn_drop_out,
+                feat_embed_size,
+                layer=WSGATLayer,
+            )
         elif layerType == "S2W":
-            self.layer = MultiHeadLayer(in_dim, int(out_dim / num_heads), num_heads, attn_drop_out, feat_embed_size, layer=SWGATLayer)
+            self.layer = MultiHeadLayer(
+                in_dim,
+                int(out_dim / num_heads),
+                num_heads,
+                attn_drop_out,
+                feat_embed_size,
+                layer=SWGATLayer,
+            )
         elif layerType == "S2S":
-            self.layer = MultiHeadSGATLayer(in_dim, int(out_dim / num_heads), num_heads, attn_drop_out, feat_embed_size)
+            self.layer = MultiHeadSGATLayer(
+                in_dim,
+                int(out_dim / num_heads),
+                num_heads,
+                attn_drop_out,
+                feat_embed_size,
+            )
         else:
             raise NotImplementedError("GAT Layer has not been implemented!")
 
-        self.ffn = PositionwiseFeedForward(out_dim, ffn_inner_hidden_size, ffn_drop_out)
+        self.ffn = PositionwiseFeedForward(
+            out_dim, ffn_inner_hidden_size, ffn_drop_out
+        )
 
     def forward(self, g, w, s):
         if self.layerType == "W2S":
@@ -40,4 +77,3 @@ class WSWGAT(nn.Module):
         h = h + origin
         h = self.ffn(h.unsqueeze(0)).squeeze(0)
         return h
-

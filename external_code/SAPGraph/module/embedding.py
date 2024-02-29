@@ -1,8 +1,7 @@
 #!/usr/bin/python
-# -*- coding: utf-8 -*-
 
 import numpy as np
-from tools.logger import *
+
 
 class Word_Embedding(object):
     def __init__(self, path, vocab):
@@ -10,7 +9,6 @@ class Word_Embedding(object):
         :param path: string; the path of word embedding
         :param vocab: object;
         """
-        logger.info("[INFO] Loading external word embedding...")
         self._path = path
         self._vocablist = vocab.word_list()
         self._vocab = vocab
@@ -50,7 +48,6 @@ class Word_Embedding(object):
             else:
                 iov += 1
                 list_word2vec.append(word_vecs[word])
-        logger.info("[INFO] oov count %d, iov count %d", oov, iov)
         return list_word2vec
 
     def add_unknown_words_by_avg(self, word_vecs, k=200):
@@ -85,7 +82,6 @@ class Word_Embedding(object):
             else:
                 iov += 1
                 list_word2vec.append(word_vecs[word])
-        logger.info("[INFO] External Word Embedding iov count: %d, oov count: %d", iov, oov)
         return list_word2vec
 
     def add_unknown_words_by_uniform(self, word_vecs, uniform=0.25, k=200):
@@ -97,19 +93,21 @@ class Word_Embedding(object):
             word = self._vocab.id2word(i)
             if word not in word_vecs:
                 oov += 1
-                word_vecs[word] = np.random.uniform(-1 * uniform, uniform, k).round(6).tolist()
+                word_vecs[word] = (
+                    np.random.uniform(-1 * uniform, uniform, k)
+                    .round(6)
+                    .tolist()
+                )
                 list_word2vec.append(word_vecs[word])
             else:
                 iov += 1
                 list_word2vec.append(word_vecs[word])
-        logger.info("[INFO] oov count %d, iov count %d", oov, iov)
         return list_word2vec
 
     # load word embedding
     def load_my_vecs_freq1(self, freqs, pro):
         word_vecs = {}
         with open(self._path, encoding="utf-8") as f:
-            freq = 0
             lines = f.readlines()[1:]
             for line in lines:
                 values = line.split(" ")
