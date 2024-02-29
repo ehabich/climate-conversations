@@ -19,11 +19,11 @@ def load_file_to_df(
     """
     if tokenized_cols is None:
         tokenized_cols = []
-    ext = filepath.split(".")[-1]
+    ext = filepath.split(".")[-1].lower()
 
-    if ext.lower() in ["pickle", "pkl"]:
+    if ext in ["pickle", "pkl"]:
         df = pd.read_pickle(filepath)
-    elif ext["csv", "txt"]:
+    elif ext in ["csv", "txt"]:
         df = pd.read_csv(filepath)
     elif ext in ["xlsx", "xls"]:
         df = pd.read_excel(filepath)
@@ -47,15 +47,15 @@ def save(df: pd.DataFrame, filepath: str) -> None:
         df (pd.DataFrame): dataframe to save.
         filepath (str): path to save the dataframe to.
     """
-    ext = filepath.split(".")[-1]
+    ext = filepath.split(".")[-1].lower()
 
-    if ext.lower() in ["pickle", "pkl"]:
+    if ext in ["pickle", "pkl"]:
         df.to_pickle(filepath)
-    elif ext.lower() in ["csv", "txt"]:
+    elif ext in ["csv", "txt"]:
         df.to_csv(filepath, index=False)
-    elif ext.lower() in ["xlsx", "xls"]:
+    elif ext in ["xlsx", "xls"]:
         df.to_excel(filepath, index=False)
-    elif ext.lower() in ["fea", "feather"]:
+    elif ext in ["fea", "feather"]:
         df.to_feather(filepath)
     else:
         raise ValueError(f"File type {ext} not supported.")
