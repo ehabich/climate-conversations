@@ -10,6 +10,7 @@ Author(s): Kathryn Link-Oberstar
 
 import json
 import os
+
 from gensim.models import KeyedVectors
 
 
@@ -26,6 +27,7 @@ def load_and_expand_moral_foundations_dictionary(
         model = KeyedVectors.load("wordvectors.kv")
     else:
         import gensim.downloader as api
+
         model = api.load(embedding_model)
         model.save("wordvectors.kv")
 
@@ -50,13 +52,13 @@ def load_and_expand_moral_foundations_dictionary(
                 line_counter += 1
 
     word_to_moral_foundation_expanded = word_to_moral_foundation.copy()
-    #word_to_moral_foundation_expanded_swap = swap_keys_values(word_to_moral_foundation_expanded)
-    #print(word_to_moral_foundation_expanded_swap)
+    # word_to_moral_foundation_expanded_swap = swap_keys_values(word_to_moral_foundation_expanded)
+    # print(word_to_moral_foundation_expanded_swap)
     expanded_dictionary = {}
 
     for word, categories in word_to_moral_foundation.items():
         if word in model.key_to_index:
-            print('word in model', word, categories)
+            print("word in model", word, categories)
             similar_words = model.most_similar(
                 positive=[word], topn=num_words_to_expand
             )
@@ -65,17 +67,17 @@ def load_and_expand_moral_foundations_dictionary(
                 if similarity_score >= similarity_threshold:
                     print(similar_word, similarity_score)
                     if similar_word in expanded_dictionary.keys():
-                        pass 
+                        pass
                     else:
                         expanded_dictionary[similar_word] = []
                     for cat in categories:
-                            if cat not in expanded_dictionary[similar_word]:
-                                expanded_dictionary[similar_word].append(cat)
+                        if cat not in expanded_dictionary[similar_word]:
+                            expanded_dictionary[similar_word].append(cat)
 
-    
     word_to_moral_foundation_expanded.update(expanded_dictionary)
-    
+
     return word_to_moral_foundation_expanded
+
 
 def swap_keys_values(d):
     swapped = {}
@@ -89,6 +91,7 @@ def swap_keys_values(d):
             else:
                 swapped[value] = [key]
     return swapped
+
 
 def main():
     dic_file_path = "moral foundations dictionary.dic"
@@ -105,7 +108,7 @@ def main():
 
     expanded_dictionary = swap_keys_values(expanded_dictionary)
 
-    del expanded_dictionary['MoralityGeneral']
+    del expanded_dictionary["MoralityGeneral"]
 
     with open(
         "expanded_moral_foundations_dictionary.json", "w", encoding="utf-8"
@@ -114,7 +117,7 @@ def main():
 
     tot_words = 0
     for key, val in expanded_dictionary.items():
-        print(f'{len(val)} words loaded for {key}.')
+        print(f"{len(val)} words loaded for {key}.")
         tot_words += len(val)
 
     print(
@@ -122,6 +125,7 @@ def main():
         tot_words,
         "entries and dumped to JSON.",
     )
+
 
 if __name__ == "__main__":
     main()
