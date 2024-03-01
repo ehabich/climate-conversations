@@ -71,26 +71,23 @@ def tokenize_comments(df, subreddit):
     return tokenizer.tokenized_df
 
 
-def compute_similarity(comment, foundation_words_vec):
+def compute_similarity(comment, foundation_words_vec, similarity_threshold=0.25):
     similarities = []
     for word in comment:  # word in reddit comment
         try:
             word_vec = word_vectors[word]  # get the embedding
-            for (
-                foundation_word_vec
-            ) in foundation_words_vec:  # loop through moral foundation words
-                sim = np.dot(word_vec, foundation_word_vec) / (
-                    np.linalg.norm(word_vec)
-                    * np.linalg.norm(foundation_word_vec)
-                )
-                similarities.append(sim)
-        except:
+            for foundation_word_vec in foundation_words_vec:  # loop through moral foundation words
+                sim = np.dot(word_vec, foundation_word_vec) / (np.linalg.norm(word_vec) * np.linalg.norm(foundation_word_vec))
+                # Apply threshold
+                if sim >= similarity_threshold:
+                    similarities.append(sim)
+        except KeyError:  # If the word is not in the embedding vocabulary
             pass
+    
     if similarities:
         return np.mean(similarities)
     else:
         return 0
-
 
 def classify_sentence_with_profile(sentence, moral_foundations_dict):
     foundation_scores = {}

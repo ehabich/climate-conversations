@@ -140,3 +140,7 @@ project/data/
 
 #Bash Output
 *.out
+
+#Word Vectors
+*.npy
+*.kv
