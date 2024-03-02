@@ -1,30 +1,26 @@
 #!/bin/bash
+#SBATCH --mail-user=jkyeaton@uchicago.edu
+#SBATCH --mail-type=ALL
+#SBATCH --job-name=dsi_climate
+#SBATCH --output=reddit_token_output/%j.%N.stdout
+#SBATCH --error=reddit_token_output/%j.%N.stderr
+#SBATCH --chdir=/home/jkyeaton/dsi_files_addtl/climate-conversations/project
+#SBATCH --partition=general
+#SBATCH --gres=gpu:1
+#SBATCH --mem=32G
+#SBATCH --time=12:00:00
 
-# This script is designed to run the moral_strength_classifier.py with different subreddits.
-# Ensure the Python script is executable and properly configured to handle the provided arguments.
-# Usage:
-# chmod +x classify_runner.sh         # Make the script executable
-# nohup ./classify_runner.sh &        # Execute the script
-# ps aux | grep classify_runner.sh    # Check status of execution
-# tail -f nohup.out                   # Check nohup output
+source /home/$USER/miniconda3/etc/profile.d/conda.sh
+conda activate climate_env
 
-# Activate the Poetry virtual environment
-VENV_PATH=$(poetry env info -p)
-source "$VENV_PATH/bin/activate"
+export INPUT_DATA_FILE_PATH="project/data_collection/project_data/tokenized_climate_comments.pickle"
+export COL_TO_TOKENIZE='Body'
+export TOKEN_NAME='tokenized_body'
+export SUBREDDIT='None'
+export UTC_START='None'
+export UTC_END='None'
+export ROWS='None'
+export TOKENIZE='False'
 
-BASE_COMMAND="python moral_strength_classifier.py"
-
-# Run each command in the background
-$BASE_COMMAND --subreddit worldnews &   # Run in background
-$BASE_COMMAND --subreddit climateskeptics &   # Run in background
-$BASE_COMMAND --subreddit climate &   # Run in background
-$BASE_COMMAND --subreddit environment &   # Run in background
-$BASE_COMMAND --subreddit climatechange &   # Run in background
-$BASE_COMMAND --subreddit climateOffensive &   # Run in background
-$BASE_COMMAND --subreddit science &   # Run in background
-$BASE_COMMAND --subreddit politics &   # Run in background
-
-# Wait for all background processes to finish
-wait
-
-echo "Processing all subreddits complete."
+# Pass vars to the python script
+python3 moral_strength_classifier.py --filepath ${INPUT_DATA_FILE_PATH} --col_to_tokenize ${COL_TO_TOKENIZE} --token_name ${TOKEN_NAME} --subreddit ${SUBREDDIT} --utc_start ${UTC_START} --utc_end ${UTC_END} --rows ${ROWS} --tokenize ${TOKENIZE}
