@@ -15,12 +15,8 @@ conda activate climate_env
 
 export INPUT_DATA_FILE_PATH="project/data_collection/project_data/tokenized_climate_comments.pickle"
 export COL_TO_TOKENIZE='Body'
-export TOKEN_NAME='tokenized_body'
 export SUBREDDIT='None'
-export UTC_START='None'
-export UTC_END='None'
-export ROWS='None'
 export TOKENIZE='False'
 
 # Pass vars to the python script
-python3 moral_strength_classifier.py --filepath ${INPUT_DATA_FILE_PATH} --col_to_tokenize ${COL_TO_TOKENIZE} --token_name ${TOKEN_NAME} --subreddit ${SUBREDDIT} --utc_start ${UTC_START} --utc_end ${UTC_END} --rows ${ROWS} --tokenize ${TOKENIZE}
+python3 moral_strength_classifier.py --filepath ${INPUT_DATA_FILE_PATH} --col_to_tokenize ${COL_TO_TOKENIZE} --subreddit ${SUBREDDIT} --tokenize ${TOKENIZE}

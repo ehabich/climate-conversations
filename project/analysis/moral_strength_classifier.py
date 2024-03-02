@@ -9,7 +9,7 @@ from gensim.models import KeyedVectors
 
 
 # EXAMPLE CLI RUN
-# poetry run python moral_strength_classifier.py --filepath project/data_collection/project_data/tokenized_climate_comments.pickle --col_to_tokenize body --token_name tokenized_body --subreddit climate --utc_start 1662654781 --utc_end 1662703120 --rows 0,2 --tokenize False
+# poetry run python moral_strength_classifier.py --filepath project/data_collection/project_data/tokenized_climate_comments.pickle --col_to_tokenize body --subreddit climate --tokenize False --type Comment
 
 print("Finished Package Imports!")
 
@@ -29,7 +29,12 @@ else:
 
 print("Loaded Word Vectors!")
 
-def load_data(filepath, subreddit=None, utc_start=None, utc_end=None, rows=None, col_to_tokenize=None):
+
+def load_data(
+    filepath,
+    subreddit=None,
+    col_to_tokenize=None,
+):
     pickle_file_path_comment = os.path.join(
         parent_directory,
         filepath,
@@ -41,38 +46,31 @@ def load_data(filepath, subreddit=None, utc_start=None, utc_end=None, rows=None,
     if subreddit:
         comments_df = comments_df[comments_df["subreddit"] == subreddit]
 
-    if utc_start and utc_end:
-        comments_df = comments_df[
-            (comments_df["created_utc"] >= utc_start)
-            & (comments_df["created_utc"] <= utc_end)
-        ]
-
     try:
+        token_key = f'tokenized_{col_to_tokenize.lower()}_words_norm'
         comments_df = comments_df[
-            ~comments_df['tokenized_body_words_norm'].isin(["[removed]", "[deleted]"])
+            ~comments_df[token_key].isin(
+                ["[removed]", "[deleted]"]
+            )
         ]
     except:
-        print('Could not find removed or deleted entries')
-
-    if rows:
-        start_row, end_row = rows
-        comments_df = comments_df.iloc[start_row:end_row]
+        print("Could not find removed or deleted entries")
 
     if subreddit:
         print(f"Filtered data for {subreddit}!")
 
     else:
-        print('Filtered data!')
-    return (comments_df)
+        print("Filtered data!")
+    return comments_df
 
 
-def tokenize_comments(df, subreddit, col_to_tokenize, token_name):
+def tokenize_comments(df, subreddit, col_to_tokenize):
     pickle_path = f"comments_{subreddit}.pkl"
     token_pickle_path = f"tokenized_comments_{subreddit}.pkl"
     df.to_pickle(pickle_path)
     tokenizer = Tokenizer(filepath=pickle_path, filename=token_pickle_path)
     tokenizer.df = df
-    tokenizer.process(cols_to_tokenize=[(col_to_tokenize, token_name)])
+    tokenizer.process(cols_to_tokenize=[(col_to_tokenize, 'tokenized_' + col_to_tokenize.lower())])
     print("Tokenizer Complete!")
     return tokenizer.tokenized_df
 
@@ -119,16 +117,24 @@ def classify_sentence_with_profile(sentence, moral_foundations_dict):
     return foundation_scores
 
 
-def main(filepath, subreddit=None, utc_start=None, utc_end=None, rows=None, tokenize=False, col_to_tokenize=False, token_name='tokenized_body'):
-
+def main(
+    filepath,
+    subreddit=None,
+    tokenize=False,
+    col_to_tokenize=False,
+    type='Undefined'
+):
     comments_df = load_data(
-        filepath=filepath, subreddit=subreddit, utc_start=utc_start, utc_end=utc_end, rows=rows
+        filepath=filepath,
+        subreddit=subreddit,
     )
 
     if tokenize is True:
-        tokenized_comments = tokenize_comments(comments_df, subreddit, col_to_tokenize, token_name)
+        tokenized_comments = tokenize_comments(
+            comments_df, subreddit, col_to_tokenize
+        )
     else:
-        print('Columns Already Tokenized!')
+        print("Columns Already Tokenized!")
         tokenized_comments = comments_df
 
     with open("expanded_moral_foundations_dictionary.json", "r") as f:
@@ -136,7 +142,8 @@ def main(filepath, subreddit=None, utc_start=None, utc_end=None, rows=None, toke
 
     # classify sentences
     classification_profiles = []
-    for comment in tokenized_comments['tokenized_body_words_norm']:
+    token_key = f"tokenized_{col_to_tokenize.lower()}_words_norm"
+    for comment in tokenized_comments[token_key]:
         classification_profile = classify_sentence_with_profile(
             comment, word_to_moral_foundation_expanded
         )
@@ -154,9 +161,8 @@ def main(filepath, subreddit=None, utc_start=None, utc_end=None, rows=None, toke
     )
 
     # write to pickle file
-    start_row, end_row = rows if rows else (None, None)
     filename = (
-        f"result_{subreddit}_{utc_start}_{utc_end}_{start_row}_{end_row}.pkl"
+        f"result_{subreddit}_{type}.pkl"
     )
     result_df.to_pickle(filename)
     print(f"Saved DataFrame to {filename}!")
@@ -165,8 +171,10 @@ def main(filepath, subreddit=None, utc_start=None, utc_end=None, rows=None, toke
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process comments or submissions.")
-    
+    parser = argparse.ArgumentParser(
+        description="Process comments or submissions."
+    )
+
     parser.add_argument(
         "--filepath",
         type=str,
@@ -180,26 +188,10 @@ if __name__ == "__main__":
         help="Column to tokenize.",
     )
 
-    parser.add_argument(
-        "--token_name",
-        type=str,
-        help="Output name for tokenized column. Only needed if tokenize = True",
-    )
+    parser.add_argument("--subreddit", type=str, help="Subreddit name")
 
-    parser.add_argument(
-        "--subreddit", type=str, help="Subreddit name"
-    )
-    parser.add_argument(
-        "--utc_start", type=int, help="Start time in UTC"
-    )
-    parser.add_argument(
-        "--utc_end", type=int, help="End time in UTC"
-    )
-    parser.add_argument(
-        "--rows",
-        type=str,
-        help="Starting and ending row indices separated by comma",
-    )
+    parser.add_argument("--type", type=str, help="Token type (i.e. submission, comment)")
+
     parser.add_argument(
         "--tokenize",
         type=str,
@@ -210,27 +202,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Handling optional string arguments that could be 'None'
-    args.subreddit = None if args.subreddit == 'None' else args.subreddit
-    args.col_to_tokenize = None if args.col_to_tokenize == 'None' else args.col_to_tokenize
-    args.token_name = None if args.token_name == 'None' else args.token_name
+    args.subreddit = None if args.subreddit == "None" else args.subreddit
+    args.col_to_tokenize = (
+        None if args.col_to_tokenize == "None" else args.col_to_tokenize
+    )
 
-    # Handling the 'rows' argument
-    if args.rows and args.rows.lower() != 'none':
-        rows = tuple(map(int, args.rows.split(",")))
+    if args.tokenize.lower() in ["true", "1", "t", "y", "yes"]:
+        tokenize = True
     else:
-        rows = None
-
-    # Convert tokenize argument from string to boolean
-    tokenize = args.tokenize.lower() in ['true', '1', 't', 'y', 'yes']
-
+        tokenize = False
+    
     result_df = main(
         filepath=args.filepath,
         col_to_tokenize=args.col_to_tokenize,
-        token_name=args.token_name,
         subreddit=args.subreddit,
-        utc_start=args.utc_start,
-        utc_end=args.utc_end,
-        rows=rows,
-        tokenize=tokenize
+        tokenize=tokenize,
+        type=args.type
     )
     print(result_df.head())
