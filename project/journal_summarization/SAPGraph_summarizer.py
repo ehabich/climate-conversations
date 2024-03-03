@@ -2,7 +2,8 @@
 Implement SAPGraph model for article summarization.
 Fine-Tune on journal articles --> abstracts.
 
-Authors: Chanteria Milner, Kate Habich
+Authors: Chanteria Milner
+Notes: Was not able to complete the implementation of the SAPGraph model.
 
 Some of the functions in this code were adapted from:
     SAPGraph: https://github.com/cece00/SAPGraph/tree/main?tab=readme-ov-file
@@ -111,24 +112,18 @@ class ArticleSummarizer:
         self.dir = os.path.join(CLEANED_DATA_PATH, self.dataset)
         self.filter_word_fp = os.path.join(self.dir, "filter_word.txt")
         self.vocab_fp = os.path.join(self.dir, "vocab")
-        self.train_data_path = os.path.join(
-            self.dir, "proquest_sapgraph_train.jsonl"
-        )
-        self.test_data_path = os.path.join(
-            self.dir, "proquest_sapgraph_test.jsonl"
-        )
-        self.valid_data_path = os.path.join(
-            self.dir, "proquest_sapgraph_valid.jsonl"
-        )
+        self.train_data_path = os.path.join(self.dir, "proquest_sapgraph_train.jsonl")
+        self.test_data_path = os.path.join(self.dir, "proquest_sapgraph_test.jsonl")
+        self.valid_data_path = os.path.join(self.dir, "proquest_sapgraph_valid.jsonl")
         self.model_path = os.path.join(self.dir, "SAPGraph_model")
 
         # datasets
         self.df = load_file_to_df(file_path)
         if self.dev_environment:
             # shuffle the data
-            self.df = self.df.sample(
-                frac=1, random_state=RANDOM_STATE
-            ).reset_index(drop=True)
+            self.df = self.df.sample(frac=1, random_state=RANDOM_STATE).reset_index(
+                drop=True
+            )
 
             # get a random sample of the data
             self.df = self.df.sample(SAMPLE_SIZE)
@@ -157,9 +152,7 @@ class ArticleSummarizer:
         pattern_headers = "|".join(
             re.escape(header) for header in SECTION_HEADERS_MAPPING.keys()
         )
-        headers_regex = (
-            rf"(?:\d+\s*\.?\s*)?({pattern_headers})(?::?\s+)(?=[\dA-Z])"
-        )
+        headers_regex = rf"(?:\d+\s*\.?\s*)?({pattern_headers})(?::?\s+)(?=[\dA-Z])"
 
         # split the text into sections
         sections = re.split(headers_regex, article_text)
@@ -168,8 +161,7 @@ class ArticleSummarizer:
         else:
             sections = sections[1:]
         sections = [
-            (sections[i], sections[i + 1].strip())
-            for i in range(0, len(sections), 2)
+            (sections[i], sections[i + 1].strip()) for i in range(0, len(sections), 2)
         ]
 
         # no sections found in article text
@@ -313,9 +305,7 @@ class ArticleSummarizer:
                 e = json.loads(line)
 
                 # concatenate the sentences and section names
-                if isinstance(e["text"], list) and isinstance(
-                    e["text"][0], list
-                ):
+                if isinstance(e["text"], list) and isinstance(e["text"][0], list):
                     sents = catDoc(e["text"])
                     secs = catDoc(e["section_name"])
                     sents.extend(secs)
@@ -398,9 +388,7 @@ class ArticleSummarizer:
         with open(self.train_data_path, "r", encoding="utf-8") as f:
             for line in f:
                 e = json.loads(line)
-                if isinstance(e["text"], list) and isinstance(
-                    e["text"][0], list
-                ):
+                if isinstance(e["text"], list) and isinstance(e["text"][0], list):
                     text = catDoc(e["text"])
                 else:
                     text = e["text"]
@@ -506,9 +494,7 @@ class ArticleSummarizer:
         train, test = train_test_split(
             self.subset_df, test_size=0.3, random_state=RANDOM_STATE
         )
-        train, valid = train_test_split(
-            train, test_size=0.5, random_state=RANDOM_STATE
-        )
+        train, valid = train_test_split(train, test_size=0.5, random_state=RANDOM_STATE)
         self.train = train
         self.test = test
         self.valid = valid
@@ -628,9 +614,7 @@ class ArticleSummarizer:
         with open(self.model_path, "wb") as f:
             torch.save(model.state_dict(), f)
 
-    def run_training(
-        self, model, train_loader, valid_loader, valset, train_dir, embed
-    ):
+    def run_training(self, model, train_loader, valid_loader, valset, train_dir, embed):
         """
         Repeatedly runs training iterations.
 
@@ -671,13 +655,9 @@ class ArticleSummarizer:
                 outputs = model.forward(
                     G, G.ndata["words"], G.ndata["label"]
                 )  # [n_snodes, 2]
-                snode_id = G.filter_nodes(
-                    lambda nodes: nodes.data["dtype"] == 1
-                )
+                snode_id = G.filter_nodes(lambda nodes: nodes.data["dtype"] == 1)
                 label = G.ndata["label"][snode_id].sum(-1)  # [n_nodes]
-                G.nodes[snode_id].data["loss"] = criterion(
-                    outputs, label
-                ).unsqueeze(-1)
+                G.nodes[snode_id].data["loss"] = criterion(outputs, label).unsqueeze(-1)
                 loss = dgl.sum_nodes(G, "loss")  # [batch_size, 1]
                 loss = loss.mean()
 
@@ -818,12 +798,8 @@ class ArticleSummarizer:
         train_w2s_path = os.path.join(
             self.dir, "proquest_sapgraph_train.w2s.tfidf.jsonl"
         )
-        val_s2s_path = os.path.join(
-            self.dir, "proquest_sapgraph_valid.s2s.tfidf.jsonl"
-        )
-        val_w2s_path = os.path.join(
-            self.dir, "proquest_sapgraph_valid.w2s.tfidf.jsonl"
-        )
+        val_s2s_path = os.path.join(self.dir, "proquest_sapgraph_valid.s2s.tfidf.jsonl")
+        val_w2s_path = os.path.join(self.dir, "proquest_sapgraph_valid.w2s.tfidf.jsonl")
 
         # initialize model
         model_s2s = WSWGAT(
@@ -884,9 +860,7 @@ class ArticleSummarizer:
             num_workers=num_workers,
         )
 
-        self.setup_training(
-            model_s2s, train_loader, valid_loader, valid_dataset, embed
-        )
+        self.setup_training(model_s2s, train_loader, valid_loader, valid_dataset, embed)
 
     def load_test_model(self, model, model_name, eval_dir):
         """
@@ -1005,12 +979,8 @@ class ArticleSummarizer:
         embed.weight.requires_grad = embed_train
 
         # get testing data paths
-        test_s2s_path = os.path.join(
-            self.dir, "proquest_sapgraph_test.s2s.tfidf.jsonl"
-        )
-        test_w2s_path = os.path.join(
-            self.dir, "proquest_sapgraph_test.w2s.tfidf.jsonl"
-        )
+        test_s2s_path = os.path.join(self.dir, "proquest_sapgraph_test.s2s.tfidf.jsonl")
+        test_w2s_path = os.path.join(self.dir, "proquest_sapgraph_test.w2s.tfidf.jsonl")
 
         # initialize model
         model_s2s = WSWGAT(

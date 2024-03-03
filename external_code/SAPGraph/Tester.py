@@ -1,7 +1,8 @@
-import torch
-import dgl
-
 import os
+
+import dgl
+import torch
+
 from external_code.SAPGraph.tools.utils import eval_label
 
 
@@ -97,7 +98,9 @@ class SLTester(TestPipLine):
         outputs = self.model.forward(G)
         snode_id = G.filter_nodes(lambda nodes: nodes.data["dtype"] == 1)
         label = G.ndata["label"][snode_id].sum(-1)  # [n_nodes]
-        G.nodes[snode_id].data["loss"] = self.criterion(outputs, label).unsqueeze(
+        G.nodes[snode_id].data["loss"] = self.criterion(
+            outputs, label
+        ).unsqueeze(
             -1
         )  # [n_nodes, 1]
         loss = dgl.sum_nodes(G, "loss")  # [batch_size, 1]
@@ -118,7 +121,9 @@ class SLTester(TestPipLine):
             N = len(snode_id)
             p_sent = g.ndata["p"][snode_id]
             p_sent = p_sent.view(-1, 2)  # [node, 2]
-            label = g.ndata["label"][snode_id].sum(-1).squeeze().cpu()  # [n_node]
+            label = (
+                g.ndata["label"][snode_id].sum(-1).squeeze().cpu()
+            )  # [n_node]
             if self.m == 0:
                 prediction = p_sent.max(1)[1]  # [node]
                 pred_idx = torch.arange(N)[prediction != 0].long()
@@ -145,7 +150,9 @@ class SLTester(TestPipLine):
             self.total_sentence_num += N
             self.example_num += 1
             hyps = "\n".join(
-                original_article_sents[id] for id in pred_idx if id < sent_max_number
+                original_article_sents[id]
+                for id in pred_idx
+                if id < sent_max_number
             )
 
             self._hyps.append(hyps)
@@ -153,7 +160,11 @@ class SLTester(TestPipLine):
 
     def getMetric(self):
         self._accu, self._precision, self._recall, self._F = eval_label(
-            self.match_true, self.pred, self.true, self.total_sentence_num, self.match
+            self.match_true,
+            self.pred,
+            self.true,
+            self.total_sentence_num,
+            self.match,
         )
 
     def ngram_blocking(self, sents, p_sent, n_win, k):
