@@ -1,43 +1,50 @@
 """
-Implements the LSTM model for summarization
+Implements LSTM models for extractive article summarization.
+Creates summaries by using the following steps:
+    1. Identify article sections (Introduction, Methods, etc.) and removing
+       unnecessary sections (Acknowledgements, References, etc.).
+    2. Tokenize the article into sentences.
+    3. Assign a weight to each sentence based on its importance. Importance
+       is calculated by finding the normalized cosine similarity between
+       each sentence and the article's abstract.
+    4. Train the LSTM model using the tokenized sentences and their cosine
+       similarities.
+    5. For each article, select the top N sentences (for a total of
+       SUMMARY_LENGTH sentences) with the highest weights to create the summary.
+       Order the sentences by their appearance in the article.
 
 Authors: Chanteria Milner
 """
 
-import argparse
-import glob
-
-# Packages
-import json
 import os
 import re
-import time
 
-import nltk
 import numpy as np
 import pandas as pd
-import spacy
 import torch
 from nltk.tokenize import sent_tokenize
-from rouge import Rouge
-from sklearn.model_selection import train_test_split
-from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
-from tensorflow.keras.models import load_model
-
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, LSTM, Dense, TimeDistributed, Masking
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import LambdaCallback
+from tensorflow.keras.layers import LSTM, Dense, Input, Masking, TimeDistributed
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 
-# Project imports
+
+# create encoding model
+encoder = SentenceTransformer("all-MiniLM-L6-v2")
+
+# project imports
 from project.utils.constants import (
     CLEANED_PROQUEST_FILE,
     MODEL_PATH,
     SECTION_HEADERS_MAPPING,
 )
-from project.utils.functions import load_file_to_df, save_df_to_file
+from project.utils.functions import load_file_to_df
 
+
+# model attributes
 SUMMARY_LENGTH = 10
 RANDOM_STATE = 42
 SAMPLE_SIZE = 100
@@ -45,25 +52,10 @@ TRAIN_SIZE = 0.7
 VALID_SIZE = 0.5
 EMBEDDING_DIM = 384  # 384 is the dimension of the sentence transformer model
 
-# create encoding model
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
 
 class LSTMSummarizer:
     """
-    Class for creating summaries of climate research articles. Creates summaries
-    by using the following steps:
-        1. Identify article sections (Introduction, Methods, etc.) and removing
-           unnecessary sections (Acknowledgements, References, etc.).
-        2. Tokenize the article into sentences.
-        3. Assign a weight to each sentence based on its importance. Importance
-           is calculated by finding the normalized cosine similarity between
-           each sentence and the article's abstract.
-        4. Train the LSTM model using the tokenized sentences and their cosine
-              similarities.
-        5. For each article, select the top N sentences with the highest weights
-           to create the summary. Order the sentences by their appearance in the
-            article.
+    Class for creating summaries of climate research articles.
 
     arguments:
         file_path (str): the path to the file containing the articles.
@@ -74,8 +66,8 @@ class LSTMSummarizer:
     def __init__(
         self,
         file_path=CLEANED_PROQUEST_FILE,
-        dev_environment: bool = False,
-        training=False,
+        dev_environment: bool = True,
+        training=True,
     ):
         self.lstm_model_dict = {
             "Introduction": None,
@@ -92,9 +84,11 @@ class LSTMSummarizer:
 
         self.tokenizer = None
         self.dev_environment = dev_environment
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.training_epochs = 50 if self.dev_environment else 10
-        self.batch_size = 32 if self.dev_environment else 8
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
+        self.training_epochs = 10 if self.dev_environment else 50
+        self.batch_size = 8 if self.dev_environment else 32
 
         # datasets
         self.df = load_file_to_df(file_path)
@@ -107,19 +101,39 @@ class LSTMSummarizer:
         ]
         if self.dev_environment:
             # shuffle the data
-            self.df = self.df.sample(frac=1, random_state=RANDOM_STATE).reset_index(
-                drop=True
-            )
+            self.df = self.df.sample(
+                frac=1, random_state=RANDOM_STATE
+            ).reset_index(drop=True)
 
             # get a random sample of the data
             self.df = self.df.sample(SAMPLE_SIZE)
             self.df.reset_index(drop=True, inplace=True)
         self.subset_df = self.df.loc[:, ["text", "abstract"]]
         self.dset = {
-            "Introduction": {"Raw": [], "Abstracts": [], "Embedded": [], "Targets": []},
-            "Method": {"Raw": [], "Abstracts": [], "Embedded": [], "Targets": []},
-            "Result": {"Raw": [], "Abstracts": [], "Embedded": [], "Targets": []},
-            "Conclusion": {"Raw": [], "Abstracts": [], "Embedded": [], "Targets": []},
+            "Introduction": {
+                "Raw": [],
+                "Abstracts": [],
+                "Embedded": [],
+                "Targets": [],
+            },
+            "Method": {
+                "Raw": [],
+                "Abstracts": [],
+                "Embedded": [],
+                "Targets": [],
+            },
+            "Result": {
+                "Raw": [],
+                "Abstracts": [],
+                "Embedded": [],
+                "Targets": [],
+            },
+            "Conclusion": {
+                "Raw": [],
+                "Abstracts": [],
+                "Embedded": [],
+                "Targets": [],
+            },
         }
         self.train_test_split = {
             "Introduction": {
@@ -168,7 +182,7 @@ class LSTMSummarizer:
         """
         Splits the text into sections.
 
-        Args:
+        parameters:
             text (str): text to split into sections.
 
         Returns:
@@ -185,9 +199,7 @@ class LSTMSummarizer:
             for header in headers:
                 pattern = re.escape(header)
                 header_patterns.append(pattern)
-        headers_regex = (
-            rf"(?:\d+\s*\.?\s*)?({'|'.join(header_patterns)})(?::?\s+)(?=[\dA-Z])"
-        )
+        headers_regex = rf"(?:\d+\s*\.?\s*)?({'|'.join(header_patterns)})(?::?\s+)(?=[\dA-Z])"
 
         # split the text into sections based on headers_regex
         sections = re.split(headers_regex, article_text)
@@ -199,7 +211,9 @@ class LSTMSummarizer:
         # organize sections into a dictionary based on SECTION_HEADERS_MAPPING
         categories = list(SECTION_HEADERS_MAPPING.keys())
         prev_category = None
-        normalized_sections = {category: [] for category in SECTION_HEADERS_MAPPING}
+        normalized_sections = {
+            category: [] for category in SECTION_HEADERS_MAPPING
+        }
         for i in range(0, len(sections), 2):
             header, text = sections[i], sections[i + 1].strip()
             for category, headers in SECTION_HEADERS_MAPPING.items():
@@ -239,17 +253,17 @@ class LSTMSummarizer:
         """
         Preprocesses the data for in preparation for the LSTM summarization.
         """
-        print("Preprocessing data...")
+        print("\tPreprocessing data...")
 
         # extract sections
-        print("\tGetting text sections...")
+        print("\t\tGetting text sections...")
         self.subset_df["text_sections"] = self.subset_df["text"].apply(
             self.extract_sections
         )
         self.subset_df.dropna(inplace=True)
 
         # add to the dataset
-        print("\tAdding to dataset...")
+        print("\t\tAdding to dataset...")
         self.subset_df.loc[:, ["text_sections", "abstract"]].apply(
             lambda x: self.grab_section_data(x, self.dset), axis=1
         )
@@ -265,28 +279,27 @@ class LSTMSummarizer:
         """
         all_targets = []
         for abstract, sents in zip(abstracts, sentences):
-            abstract_vector = model.encode(abstract)
+            abstract_vector = encoder.encode(abstract)
             targets = []
             for sentence in sents:
                 # exclude the first element, which is the normalized sentence order
                 sim = cosine_similarity([sentence[1:]], [abstract_vector])[0][0]
-                targets.append(sim)
+                targets.append([sim])
             all_targets.append(targets)
 
-        return all_targets
+        return np.array(all_targets)
 
     def prepare_datasets(self) -> None:
         """
         Prepares the datasets for training the LSTM model.
         """
-        print("Preparing datasets...")
+        print("\tPreparing datasets...")
 
         # embedd the sentences in each article
         for section in self.dset:
-
             # embedd article sentences
             embedded_articles = [
-                [model.encode(sentence) for sentence in article]
+                [encoder.encode(sentence) for sentence in article]
                 for article in self.dset[section]["Raw"]
             ]
 
@@ -297,9 +310,13 @@ class LSTMSummarizer:
                     article[i] = np.append(norm_order, embedding)
 
             # pad article sections to have a uniform length
-            max_article_length = max(len(article) for article in embedded_articles)
+            max_article_length = max(
+                len(article) for article in embedded_articles
+            )
             max_sentence_length = max(
-                len(sentence) for article in embedded_articles for sentence in article
+                len(sentence)
+                for article in embedded_articles
+                for sentence in article
             )
             padded_articles = pad_sequences(
                 [np.array(article) for article in embedded_articles],
@@ -311,8 +328,12 @@ class LSTMSummarizer:
             self.dset[section]["Embedded"] = padded_articles
 
             # save the max sentence and article length
-            self.train_test_split[section]["max_sentence_length"] = max_sentence_length
-            self.train_test_split[section]["max_article_length"] = max_article_length
+            self.train_test_split[section][
+                "max_sentence_length"
+            ] = max_sentence_length
+            self.train_test_split[section][
+                "max_article_length"
+            ] = max_article_length
 
             # get the targets
             self.dset[section]["Targets"] = self.get_targets(
@@ -336,7 +357,7 @@ class LSTMSummarizer:
             self.train_test_split[section]["X_valid"] = X_valid
             self.train_test_split[section]["y_valid"] = y_valid
 
-    def train_lstm_model(self, section: str) -> None:
+    def train_lstm(self, section: str) -> None:
         """
         Trains the LSTM model for a given category.
 
@@ -360,9 +381,9 @@ class LSTMSummarizer:
 
         # build the model
         input_shape = (
-            None,
+            self.train_test_split[section]["max_article_length"],
             EMBEDDING_DIM + 1,
-        )  # 'None' allows for variable sentence counts
+        )
 
         inputs = Input(shape=input_shape)
         masked = Masking(mask_value=0.0)(inputs)  # 0.0 is the padding value
@@ -373,12 +394,12 @@ class LSTMSummarizer:
             lstm_out
         )  # assuming binary importance score; adjust activation for your task
 
-        model = Model(inputs=inputs, outputs=sentence_importance)
-        model.compile(optimizer="adam", loss="mean_squared_error")
-        model.summary()
+        lstm_model = Model(inputs=inputs, outputs=sentence_importance)
+        lstm_model.compile(optimizer="adam", loss="mean_squared_error")
+        lstm_model.summary()
 
         # train model
-        history = model.fit(
+        lstm_model.fit(
             X_train,
             y_train,
             epochs=self.training_epochs,
@@ -388,23 +409,28 @@ class LSTMSummarizer:
         )
 
         # evaluate the model
-        test_loss = model.evaluate(X_test, y_test)
+        test_loss = lstm_model.evaluate(X_test, y_test)
         print(f"Test Loss: {test_loss}")
 
         # save the model
-        model.save(os.path.join(MODEL_PATH, f"{section}_lstm.h5"))
+        self.lstm_model_dict[section] = lstm_model
+        lstm_model.save(os.path.join(MODEL_PATH, f"{section}_lstm.h5"))
 
-    def train_lstm(self) -> None:
+    def train(self) -> None:
         """
         Trains the LSTM models. There are four models, one for each section
         of interest.
         """
-        print("Training LSTM models...")
+        # load the data
+        print("Loading data...")
+        self.preprocess()
+        self.prepare_datasets()
 
         # train the LSTM models
+        print("Training LSTM models...")
         for section in self.train_test_split:
             print(f"\tTraining {section} model...")
-            self.train_lstm_model(section)
+            self.train_lstm(section)
 
     def summarize(self, article_text: str, top_n_per_section: int = 2) -> str:
         """
@@ -431,7 +457,10 @@ class LSTMSummarizer:
 
             # embed sentences and add normalized sentence order
             embedded_sentences = [
-                np.append(np.array([(i + 1) / len(sentences)]), model.encode(sentence))
+                np.append(
+                    np.array([(i + 1) / len(sentences)]),
+                    encoder.encode(sentence),
+                )
                 for i, sentence in enumerate(sentences)
             ]
 
@@ -445,9 +474,9 @@ class LSTMSummarizer:
             )
 
             # predict importance scores
-            importance_scores = self.lstm_model_dict[section].predict(padded_sentences)[
-                0
-            ]
+            importance_scores = self.lstm_model_dict[section].predict(
+                padded_sentences
+            )[0]
 
             # calculate remaining sentences to select based on total limit
             remaining_sentences_to_select = SUMMARY_LENGTH - sentences_selected
@@ -455,7 +484,7 @@ class LSTMSummarizer:
 
             # select top N sentences based on the scores,
             # not exceeding total summary length
-            top_indices = np.argsort(-importance_scores[:, 0])[:top_n]
+            top_indices = np.parametersort(-importance_scores[:, 0])[:top_n]
             for i in top_indices:
                 if i < len(sentences) and sentences_selected < SUMMARY_LENGTH:
                     # store the sentence and its order
@@ -469,7 +498,9 @@ class LSTMSummarizer:
         # sort the sentences by their normalized orders before compiling the
         # summary
         summary_sentences_with_order.sort(key=lambda x: x[1])
-        summary_sentences = [sentence for sentence, _ in summary_sentences_with_order]
+        summary_sentences = [
+            sentence for sentence, _ in summary_sentences_with_order
+        ]
 
         # combine selected sentences to form the summary
         summary = " ".join(summary_sentences)
