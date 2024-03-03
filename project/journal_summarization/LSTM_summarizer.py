@@ -432,7 +432,7 @@ class LSTMSummarizer:
             print(f"\tTraining {section} model...")
             self.train_lstm(section)
 
-    def summarize(self, article_text: str, top_n_per_section: int = 2) -> str:
+    def summarize(self, article_text: str) -> str:
         """
         Summarizes an article by selecting the top N sentences from each
         relevant section.
@@ -450,9 +450,23 @@ class LSTMSummarizer:
         summary_sentences_with_order = []
         sentences_selected = 0
 
+        # get the number of sections with sentences
+        num_sections = sum(
+            1
+            for section, sentences in sections.items()
+            if sentences and len(sentences) > 0
+        )
+
+        # get the number of sentences to select from each section
+        top_n_per_section = (SUMMARY_LENGTH // num_sections) + 1
+
         # process each section
         for section, sentences in sections.items():
-            if section not in self.lstm_model_dict or not sentences:
+            if (
+                section not in self.lstm_model_dict
+                or not sentences
+                or len(sentences) == 0
+            ):
                 continue  # skip sections without a model or sentences
 
             # embed sentences and add normalized sentence order
@@ -484,7 +498,7 @@ class LSTMSummarizer:
 
             # select top N sentences based on the scores,
             # not exceeding total summary length
-            top_indices = np.parametersort(-importance_scores[:, 0])[:top_n]
+            top_indices = np.argsort(-importance_scores[:, 0])[:top_n]
             for i in top_indices:
                 if i < len(sentences) and sentences_selected < SUMMARY_LENGTH:
                     # store the sentence and its order
