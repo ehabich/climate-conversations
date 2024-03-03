@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import sys
+
 import numpy as np
 import pandas as pd
 from gensim.models import KeyedVectors
@@ -47,11 +48,9 @@ def load_data(
         comments_df = comments_df[comments_df["subreddit"] == subreddit]
 
     try:
-        token_key = f'tokenized_{col_to_tokenize.lower()}_words_norm'
+        token_key = f"tokenized_{col_to_tokenize.lower()}_words_norm"
         comments_df = comments_df[
-            ~comments_df[token_key].isin(
-                ["[removed]", "[deleted]"]
-            )
+            ~comments_df[token_key].isin(["[removed]", "[deleted]"])
         ]
     except:
         print("Could not find removed or deleted entries")
@@ -70,7 +69,11 @@ def tokenize_comments(df, subreddit, col_to_tokenize):
     df.to_pickle(pickle_path)
     tokenizer = Tokenizer(filepath=pickle_path, filename=token_pickle_path)
     tokenizer.df = df
-    tokenizer.process(cols_to_tokenize=[(col_to_tokenize, 'tokenized_' + col_to_tokenize.lower())])
+    tokenizer.process(
+        cols_to_tokenize=[
+            (col_to_tokenize, "tokenized_" + col_to_tokenize.lower())
+        ]
+    )
     print("Tokenizer Complete!")
     return tokenizer.tokenized_df
 
@@ -122,7 +125,7 @@ def main(
     subreddit=None,
     tokenize=False,
     col_to_tokenize=False,
-    type='Undefined'
+    type="Undefined",
 ):
     comments_df = load_data(
         filepath=filepath,
@@ -161,9 +164,7 @@ def main(
     )
 
     # write to pickle file
-    filename = (
-        f"result_{subreddit}_{type}.pkl"
-    )
+    filename = f"result_{subreddit}_{type}.pkl"
     result_df.to_pickle(filename)
     print(f"Saved DataFrame to {filename}!")
 
@@ -190,7 +191,9 @@ if __name__ == "__main__":
 
     parser.add_argument("--subreddit", type=str, help="Subreddit name")
 
-    parser.add_argument("--type", type=str, help="Token type (i.e. submission, comment)")
+    parser.add_argument(
+        "--type", type=str, help="Token type (i.e. submission, comment)"
+    )
 
     parser.add_argument(
         "--tokenize",
@@ -211,12 +214,12 @@ if __name__ == "__main__":
         tokenize = True
     else:
         tokenize = False
-    
+
     result_df = main(
         filepath=args.filepath,
         col_to_tokenize=args.col_to_tokenize,
         subreddit=args.subreddit,
         tokenize=tokenize,
-        type=args.type
+        type=args.type,
     )
     print(result_df.head())
