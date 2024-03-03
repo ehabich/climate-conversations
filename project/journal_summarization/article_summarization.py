@@ -3,7 +3,10 @@ Implement SAPGraph model for article summarization.
 Fine-Tune on journal articles --> abstracts.
 
 Authors: Chanteria Milner, Kate Habich
-Credit: https://github.com/cece00/SAPGraph/tree/main?tab=readme-ov-file
+
+Some of the functions in this code were adapted from:
+    SAPGraph: https://github.com/cece00/SAPGraph/tree/main?tab=readme-ov-file
+    HSG: https://github.com/dqwang122/HeterSumGraph/tree/master
 """
 
 import argparse
@@ -13,13 +16,17 @@ import glob
 import json
 import os
 import re
+import shutil
+import time
 
+import dgl
 import nltk
 import numpy as np
 import pandas as pd
 import spacy
 import torch
 from nltk.tokenize import sent_tokenize
+from rouge import Rouge
 from sklearn.model_selection import train_test_split
 
 from external_code.SAPGraph.module.dataloader_all import (
@@ -34,11 +41,15 @@ from external_code.SAPGraph.script.calEdge import main, main_train
 # external packages
 from external_code.SAPGraph.script.createVoc import catDoc, getEnt
 from external_code.SAPGraph.script.lowTFIDFWords import calTFidf
+from external_code.SAPGraph.Tester import SLTester
+from external_code.SAPGraph.tools import utils as ut
 
 # Project imports
 from project.utils.constants import (
     CLEANED_DATA_PATH,
     CLEANED_PROQUEST_FILE,
+    MODEL_PATH,
+    PROJECT_PATH,
     PUNCTUATION_FILTER,
     SECTION_HEADERS_MAPPING,
 )
@@ -61,7 +72,16 @@ EPOCHS = 10
 NUM_HEADS = 8
 HIDDEN_LAYER_DIM = 64
 HIDDEN_SIZE_FFN = 512
-GLOVE_PATH = os.path.join("data", "models", "glove.42B.300d.txt")
+MAX_GRADIENT_NORM = 1.0
+CUDA = False
+GRAD_CLIP = False
+LR = 2e-3
+LR_DESCENT = False
+NGRAM_BLOCK = False
+USE_PYROUGE = True
+LIMITED = False
+DECODE_SUM_LEN = 10
+GLOVE_PATH = os.path.join(PROJECT_PATH, "data", "models", "glove.42B.300d.txt")
 NLP = spacy.load("en_core_sci_md")
 
 
@@ -89,7 +109,8 @@ class ArticleSummarizer:
             os.makedirs(os.path.join(CLEANED_DATA_PATH, self.dataset))
 
         self.dir = os.path.join(CLEANED_DATA_PATH, self.dataset)
-        self.vocab_fp = os.path.join(self.dir, "filter_word.txt")
+        self.filter_word_fp = os.path.join(self.dir, "filter_word.txt")
+        self.vocab_fp = os.path.join(self.dir, "vocab")
         self.train_data_path = os.path.join(
             self.dir, "proquest_sapgraph_train.jsonl"
         )
@@ -99,6 +120,7 @@ class ArticleSummarizer:
         self.valid_data_path = os.path.join(
             self.dir, "proquest_sapgraph_valid.jsonl"
         )
+        self.model_path = os.path.join(self.dir, "SAPGraph_model")
 
         # datasets
         self.df = load_file_to_df(file_path)
@@ -177,7 +199,7 @@ class ArticleSummarizer:
             from.
 
         Returns:
-            list: list of entities.
+            (list): list of entities.
         """
         entities = []
         for sentence in list_of_sentences:
@@ -214,26 +236,35 @@ class ArticleSummarizer:
         text = row["text"]
         summary = row["abstract"]
 
+        labels = ut.cal_label(text, summary)
+
         # extract text sections
         sectioned_text = self.extract_sections(text)
-        text = []
-        section = []
-        entities = []
+        text_lst = []
+        section_lst = []
+        entity_lst = []
 
         # extract entities, sections, and text
         if sectioned_text is not None:
             for sec, sentences in sectioned_text.items():
-                section.append(sec)
-                text.append(sentences)
+                if len(sentences) == 0:
+                    continue
+
+                # append the section name and sentences
+                section_lst.append([sec])
+                text_lst.append(sentences)
+
+                # get the entities
                 ents = self.extract_entities(sentences)
-                entities.append(ents)
+                entity_lst.append(ents)
         else:
             return None
 
         return {
-            "section_name": section,
-            "text": text,
-            "entity": entities,
+            "section_name": section_lst,
+            "text": text_lst,
+            "entity": entity_lst,
+            "label": labels,
             "summary": sent_tokenize(summary),  # "abstract" in the dataframe
         }
 
@@ -385,7 +416,7 @@ class ArticleSummarizer:
         word_order = np.argsort(word_tfidf[0])  # sort A->Z, return index
 
         id2word = vectorizer.get_feature_names_out()
-        with open(self.vocab_fp, "w") as fout:
+        with open(self.filter_word_fp, "w") as fout:
             for idx in word_order:
                 w = id2word[idx]
                 fout.write(w + "\n")
@@ -425,12 +456,12 @@ class ArticleSummarizer:
         Concatenates the cal-edge data produced by the multiple workers.
         """
         file_patterns = [
-            "proquest_sapgraph_train.w2s.jsonl*",
-            "proquest_sapgraph_train.s2s.jsonl*",
-            "proquest_sapgraph_test.w2s.jsonl*",
-            "proquest_sapgraph_test.s2s.jsonl*",
-            "proquest_sapgraph_valid.w2s.jsonl*",
-            "proquest_sapgraph_valid.s2s.jsonl*",
+            "proquest_sapgraph_train.w2s.tfidf.jsonl*",
+            "proquest_sapgraph_train.s2s.tfidf.jsonl*",
+            "proquest_sapgraph_test.w2s.tfidf.jsonl*",
+            "proquest_sapgraph_test.s2s.tfidf.jsonl*",
+            "proquest_sapgraph_valid.w2s.tfidf.jsonl*",
+            "proquest_sapgraph_valid.s2s.tfidf.jsonl*",
         ]
 
         for pattern in file_patterns:
@@ -473,10 +504,10 @@ class ArticleSummarizer:
         # test-train-validate split
         print("\tTest-train-validate split...")
         train, test = train_test_split(
-            self.subset_df, test_size=0.2, random_state=RANDOM_STATE
+            self.subset_df, test_size=0.3, random_state=RANDOM_STATE
         )
         train, valid = train_test_split(
-            train, test_size=0.2, random_state=RANDOM_STATE
+            train, test_size=0.5, random_state=RANDOM_STATE
         )
         self.train = train
         self.test = test
@@ -498,42 +529,124 @@ class ArticleSummarizer:
         print("\tRunning cal edge...")
         self.run_cal_edge()
 
-        # concatenate the data
-        print("\tConcatenating cal-edge data...")
-        self.concat_cal_edge()
-
-    # FIXME: The following code is not complete and needs to be adapted to the SAPGraph model
-    def save_model(model, save_file):
+    def run_eval(
+        self, model, loader, valset, best_loss, best_F, non_descent_cnt, saveNo
+    ):
         """
+        Repeatedly runs eval iterations, logging to screen and writing summaries.
+        Saves the model with the best loss seen so far.
+
+        :param model: the model
+        :param loader: valid dataset loader
+        :param valset: valid dataset which includes text and summary
+        :param best_loss: best valid loss so far
+        :param best_F: best valid F so far
+        :param non_descent_cnt: the number of non descent epoch (for early stop)
+        :param saveNo: the number of saved models (always keep best saveNo checkpoints)
+        :return:
 
         Credits:
             https://github.com/dqwang122/HeterSumGraph/blob/master/train.py#L43
         """
-        with open(save_file, "wb") as f:
-            torch.save(model.state_dict(), f)
-        logger.info("[INFO] Saving model to %s", save_file)
+        eval_dir = os.path.join(
+            MODEL_PATH, "eval"
+        )  # make a subdir of the root dir for eval data
+        if not os.path.exists(eval_dir):
+            os.makedirs(eval_dir)
 
-    # FIXME: The following code is not complete and needs to be adapted to the SAPGraph model
+        model.eval()
+
+        time.time()
+
+        with torch.no_grad():
+            tester = SLTester(model, DECODE_SUM_LEN)
+            for _i, (G, index) in enumerate(loader):
+                if CUDA:
+                    G.to(torch.device("cuda"))
+                tester.evaluation(G, index, valset)
+
+        running_avg_loss = tester.running_avg_loss
+
+        if len(tester.hyps) == 0 or len(tester.refer) == 0:
+            return
+        rouge = Rouge()
+        scores_all = rouge.get_scores(tester.hyps, tester.refer, avg=True)
+
+        (
+            "Rouge1:\n\tp:%.6f, r:%.6f, f:%.6f\n"
+            % (
+                scores_all["rouge-1"]["p"],
+                scores_all["rouge-1"]["r"],
+                scores_all["rouge-1"]["f"],
+            )
+            + "Rouge2:\n\tp:%.6f, r:%.6f, f:%.6f\n"
+            % (
+                scores_all["rouge-2"]["p"],
+                scores_all["rouge-2"]["r"],
+                scores_all["rouge-2"]["f"],
+            )
+            + "Rougel:\n\tp:%.6f, r:%.6f, f:%.6f\n"
+            % (
+                scores_all["rouge-l"]["p"],
+                scores_all["rouge-l"]["r"],
+                scores_all["rouge-l"]["f"],
+            )
+        )
+
+        tester.getMetric()
+        F = tester.labelMetric
+
+        if best_loss is None or running_avg_loss < best_loss:
+            bestmodel_save_path = os.path.join(
+                eval_dir, "bestmodel_%d" % (saveNo % 3)
+            )  # this is where checkpoints of best models are saved
+            with open(bestmodel_save_path, "wb") as f:
+                torch.save(model.state_dict(), f)
+            best_loss = running_avg_loss
+            non_descent_cnt = 0
+            saveNo += 1
+        else:
+            non_descent_cnt += 1
+
+        if best_F is None or best_F < F:
+            bestmodel_save_path = os.path.join(
+                eval_dir, "bestFmodel"
+            )  # this is where checkpoints of best models are saved
+            with open(bestmodel_save_path, "wb") as f:
+                torch.save(model.state_dict(), f)
+            best_F = F
+
+        return best_loss, best_F, non_descent_cnt, saveNo
+
+    def save_model(self, model):
+        """
+        Saves the model to a file.
+
+        Credits:
+            https://github.com/dqwang122/HeterSumGraph/blob/master/train.py#L43
+        """
+        with open(self.model_path, "wb") as f:
+            torch.save(model.state_dict(), f)
+
     def run_training(
-        self, model, train_loader, valid_loader, valset, hps, train_dir
+        self, model, train_loader, valid_loader, valset, train_dir, embed
     ):
         """
-        Repeatedly runs training iterations, logging loss to screen and log files
+        Repeatedly runs training iterations.
 
         :param model: the model
         :param train_loader: train dataset loader
         :param valid_loader: valid dataset loader
         :param valset: valid dataset which includes text and summary
-        :param hps: hps for model
         :param train_dir: where to save checkpoints
+        :param embed: the word embeddings
 
         Credits:
             https://github.com/dqwang122/HeterSumGraph/blob/master/train.py#L43
         """
-        logger.info("[INFO] Starting run_training")
 
         optimizer = torch.optim.Adam(
-            filter(lambda p: p.requires_grad, model.parameters()), lr=hps.lr
+            filter(lambda p: p.requires_grad, model.parameters()), lr=LR
         )
 
         criterion = torch.nn.CrossEntropyLoss(reduction="none")
@@ -544,46 +657,38 @@ class ArticleSummarizer:
         non_descent_cnt = 0
         saveNo = 0
 
-        for epoch in range(1, hps.n_epochs + 1):
+        for epoch in range(1, EPOCHS + 1):
             epoch_loss = 0.0
             train_loss = 0.0
-            epoch_start_time = time.time()
+            time.time()
             for i, (G, _index) in enumerate(train_loader):
                 iter_start_time = time.time()
-                # if i > 10:
-                #     break
                 model.train()
 
-                if hps.cuda:
+                if CUDA:
                     G.to(torch.device("cuda"))
 
-                outputs = model.forward(G)  # [n_snodes, 2]
+                outputs = model.forward(
+                    G, G.ndata["words"], G.ndata["label"]
+                )  # [n_snodes, 2]
                 snode_id = G.filter_nodes(
                     lambda nodes: nodes.data["dtype"] == 1
                 )
                 label = G.ndata["label"][snode_id].sum(-1)  # [n_nodes]
                 G.nodes[snode_id].data["loss"] = criterion(
                     outputs, label
-                ).unsqueeze(
-                    -1
-                )  # [n_nodes, 1]
+                ).unsqueeze(-1)
                 loss = dgl.sum_nodes(G, "loss")  # [batch_size, 1]
                 loss = loss.mean()
 
-                if not (np.isfinite(loss.data.cpu())).numpy():
-                    logger.error("train Loss is not finite. Stopping.")
-                    logger.info(loss)
-                    for name, param in model.named_parameters():
-                        if param.requires_grad:
-                            logger.info(name)
-                            # logger.info(param.grad.data.sum())
+                if (np.isfinite(loss.data.cpu())).numpy():
                     raise Exception("train Loss is not finite. Stopping.")
 
                 optimizer.zero_grad()
                 loss.backward()
-                if hps.grad_clip:
+                if GRAD_CLIP:
                     torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), hps.max_grad_norm
+                        model.parameters(), MAX_GRADIENT_NORM
                     )
 
                 optimizer.step()
@@ -591,57 +696,38 @@ class ArticleSummarizer:
                 train_loss += float(loss.data)
                 epoch_loss += float(loss.data)
 
-                if i % 100 == 0:
-                    if _DEBUG_FLAG_:
-                        for name, param in model.named_parameters():
-                            if param.requires_grad:
-                                logger.debug(name)
-                                logger.debug(param.grad.data.sum())
-                    logger.info(
-                        "       | end of iter {:3d} | time: {:5.2f}s | train loss {:5.4f} | ".format(
-                            i,
-                            (time.time() - iter_start_time),
-                            float(train_loss / 100),
-                        )
+                print(
+                    "Epoch: %d, Batch: %d, Loss: %.6f, Iter time: %.6f"
+                    % (
+                        epoch,
+                        i,
+                        train_loss / (i + 1),
+                        time.time() - iter_start_time,
                     )
+                )
+
+                if i % 100 == 0:
                     train_loss = 0.0
 
-            if hps.lr_descent:
-                new_lr = max(5e-6, hps.lr / (epoch + 1))
+            if LR_DESCENT:
+                new_lr = max(5e-6, LR / (epoch + 1))
                 for param_group in list(optimizer.param_groups):
                     param_group["lr"] = new_lr
-                logger.info("[INFO] The learning rate now is %f", new_lr)
 
             epoch_avg_loss = epoch_loss / len(train_loader)
-            logger.info(
-                "   | end of epoch {:3d} | time: {:5.2f}s | epoch train loss {:5.4f} | ".format(
-                    epoch,
-                    (time.time() - epoch_start_time),
-                    float(epoch_avg_loss),
-                )
-            )
 
             if not best_train_loss or epoch_avg_loss < best_train_loss:
                 save_file = os.path.join(train_dir, "bestmodel")
-                logger.info(
-                    "[INFO] Found new best model with %.3f running_train_loss. Saving to %s",
-                    float(epoch_avg_loss),
-                    save_file,
-                )
-                save_model(model, save_file)
+                self.save_model(model, save_file)
                 best_train_loss = epoch_avg_loss
             elif epoch_avg_loss >= best_train_loss:
-                logger.error(
-                    "[Error] training loss does not descent. Stopping supervisor..."
-                )
-                save_model(model, os.path.join(train_dir, "earlystop"))
-                sys.exit(1)
+                self.save_model(model, os.path.join(train_dir, "earlystop"))
+                return
 
-            best_loss, best_F, non_descent_cnt, saveNo = run_eval(
+            best_loss, best_F, non_descent_cnt, saveNo = self.run_eval(
                 model,
                 valid_loader,
                 valset,
-                hps,
                 best_loss,
                 best_F,
                 non_descent_cnt,
@@ -649,14 +735,18 @@ class ArticleSummarizer:
             )
 
             if non_descent_cnt >= 3:
-                logger.error(
-                    "[Error] val loss does not descent for three times. Stopping supervisor..."
-                )
-                save_model(model, os.path.join(train_dir, "earlystop"))
+                self.save_model(model, os.path.join(train_dir, "earlystop"))
                 return
 
-    # FIXME: The following code is not complete and needs to be adapted to the SAPGraph model
-    def setup_training(self, model, train_loader, valid_loader, valset, hps):
+    def setup_training(
+        self,
+        model,
+        train_loader,
+        valid_loader,
+        valset,
+        embed,
+        restore_model=False,
+    ):
         """
         Does setup before starting training (run_training)
 
@@ -664,37 +754,29 @@ class ArticleSummarizer:
         :param train_loader: train dataset loader
         :param valid_loader: valid dataset loader
         :param valset: valid dataset which includes text and summary
-        :param hps: hps for model
+        :param embed: the word embeddings
+        :param restore_model: whether to restore model from checkpoint
 
         Credits:
             https://github.com/dqwang122/HeterSumGraph/blob/master/train.py#L43
         """
 
-        train_dir = os.path.join(hps.save_root, "train")
-        if os.path.exists(train_dir) and hps.restore_model != "None":
-            logger.info(
-                "[INFO] Restoring %s for training...", hps.restore_model
-            )
-            bestmodel_file = os.path.join(train_dir, hps.restore_model)
+        train_dir = os.path.join(MODEL_PATH, "train")
+        if os.path.exists(train_dir) and restore_model:
+            bestmodel_file = os.path.join(train_dir, restore_model)
             model.load_state_dict(torch.load(bestmodel_file))
-            hps.save_root = hps.save_root + "_reload"
         else:
-            logger.info("[INFO] Create new model for training...")
             if os.path.exists(train_dir):
                 shutil.rmtree(train_dir)
             os.makedirs(train_dir)
 
         try:
-            run_training(
-                model, train_loader, valid_loader, valset, hps, train_dir
+            self.run_training(
+                model, train_loader, valid_loader, valset, train_dir, embed
             )
         except KeyboardInterrupt:
-            logger.error(
-                "[Error] Caught keyboard interrupt on worker. Stopping supervisor..."
-            )
-            save_model(model, os.path.join(train_dir, "earlystop"))
+            self.save_model(model, os.path.join(train_dir, "earlystop"))
 
-    # FIXME: The following code is not complete and needs to be adapted to the SAPGraph model
     def train_model(self, embed_train: bool = False) -> None:
         """
         Trains the model on the data.
@@ -706,6 +788,11 @@ class ArticleSummarizer:
         Credits:
             https://github.com/dqwang122/HeterSumGraph/blob/master/train.py
         """
+        if CUDA:
+            num_workers = 32
+        else:
+            num_workers = 8
+
         # grab the vocabulary
         vocab = Vocab(self.vocab_fp, VOCAB_MAX_SIZE)
 
@@ -749,16 +836,16 @@ class ArticleSummarizer:
             feat_embed_size=EDGE_EMBED_DIM,
             layerType="S2S",
         )
-        WSWGAT(
-            in_dim=VOCAB_EMBED_DIM,
-            out_dim=SENT_ENT_NODE_EMBED_DIM,
-            num_heads=NUM_HEADS,
-            attn_drop_out=0.1,
-            ffn_inner_hidden_size=HIDDEN_SIZE_FFN,
-            ffn_drop_out=0.1,
-            feat_embed_size=EDGE_EMBED_DIM,
-            layerType="W2S",
-        )  # fixme
+        # model_w2s = WSWGAT(
+        #     in_dim=VOCAB_EMBED_DIM,
+        #     out_dim=SENT_ENT_NODE_EMBED_DIM,
+        #     num_heads=NUM_HEADS,
+        #     attn_drop_out=0.1,
+        #     ffn_inner_hidden_size=HIDDEN_SIZE_FFN,
+        #     ffn_drop_out=0.1,
+        #     feat_embed_size=EDGE_EMBED_DIM,
+        #     layerType="W2S",
+        # )  # fixme
 
         # get datasets
         dataset = DatasetAll(
@@ -775,11 +862,9 @@ class ArticleSummarizer:
         train_loader = torch.utils.data.DataLoader(
             dataset,
             batch_size=BATCH_SIZE,
-            shuffle=True,
-            num_workers=32,
+            num_workers=num_workers,
             collate_fn=graph_collate_fn,
         )
-
         valid_dataset = DatasetAll(
             self.valid_data_path,
             vocab,
@@ -796,14 +881,191 @@ class ArticleSummarizer:
             batch_size=BATCH_SIZE,
             shuffle=False,
             collate_fn=graph_collate_fn,
-            num_workers=32,
+            num_workers=num_workers,
         )
 
         self.setup_training(
-            model_s2s, train_loader, valid_loader, valid_dataset
+            model_s2s, train_loader, valid_loader, valid_dataset, embed
         )
 
-        pass
+    def load_test_model(self, model, model_name, eval_dir):
+        """
+        Choose which model will be loaded for evaluation.
+
+        :param model: the model
+        :param model_name: the model name
+        :param eval_dir: the evaluation directory
+
+        Credits:
+            https://github.com/dqwang122/HeterSumGraph/blob/master/evaluation.py
+        """
+        if model_name.startswith("eval"):
+            bestmodel_load_path = os.path.join(eval_dir, model_name[4:])
+        elif model_name.startswith("train"):
+            train_dir = os.path.join(MODEL_PATH, "train")
+            bestmodel_load_path = os.path.join(train_dir, model_name[5:])
+        elif model_name == "earlystop":
+            train_dir = os.path.join(MODEL_PATH, "train")
+            bestmodel_load_path = os.path.join(train_dir, "earlystop")
+        else:
+            raise ValueError(
+                "None of such model! Must be one of evalbestmodel/trainbestmodel/earlystop"
+            )
+
+        model.load_state_dict(torch.load(bestmodel_load_path))
+
+        return model
+
+    def run_test(self, model, dataset, loader, model_name):
+        """
+        Test the model on the test data.
+
+        :param model: the model
+        :param dataset: the dataset
+        :param loader: the data loader
+
+        Credits:
+            https://github.com/dqwang122/HeterSumGraph/blob/master/evaluation.py
+        """
+        test_dir = os.path.join(MODEL_PATH, "test")
+        eval_dir = os.path.join(MODEL_PATH, "eval")
+        if not os.path.exists(test_dir):
+            os.makedirs(test_dir)
+
+        model = self.load_test_model(model, model_name, eval_dir)
+        model.eval()
+
+        time.time()
+        with torch.no_grad():
+            tester = SLTester(model, DECODE_SUM_LEN)
+
+            for _i, (G, index) in enumerate(loader):
+                if CUDA:
+                    G.to(torch.device("cuda"))
+                tester.evaluation(G, index, dataset, blocking=NGRAM_BLOCK)
+
+        if not tester.rougePairNum:
+            print("During testing, no hyps is selected!")
+            return
+
+        rouge = Rouge()
+        scores_all = rouge.get_scores(tester.hyps, tester.refer, avg=True)
+
+        (
+            "Rouge1:\n\tp:%.6f, r:%.6f, f:%.6f\n"
+            % (
+                scores_all["rouge-1"]["p"],
+                scores_all["rouge-1"]["r"],
+                scores_all["rouge-1"]["f"],
+            )
+            + "Rouge2:\n\tp:%.6f, r:%.6f, f:%.6f\n"
+            % (
+                scores_all["rouge-2"]["p"],
+                scores_all["rouge-2"]["r"],
+                scores_all["rouge-2"]["f"],
+            )
+            + "Rougel:\n\tp:%.6f, r:%.6f, f:%.6f\n"
+            % (
+                scores_all["rouge-l"]["p"],
+                scores_all["rouge-l"]["r"],
+                scores_all["rouge-l"]["f"],
+            )
+        )
+
+        tester.getMetric()
+        tester.SaveDecodeFile()
+
+    def evaluate_model(self, embed_train: bool = False) -> None:
+        """
+        Evaluates the model on the test data.
+        Note this code was heavily adapted from SAPGraph and HSG code.
+
+        parameters:
+            embed_train (bool): whether or not to train the embeddings.
+
+        Credits:
+            https://github.com/dqwang122/HeterSumGraph/blob/master/evaluation.py
+        """
+        # grab the vocabulary
+        vocab = Vocab(self.vocab_fp, VOCAB_MAX_SIZE)
+
+        # embedd the vocabulary using VOCAB_EMBED_DIM
+        # download the GLOVE glove.42B.300d.zip file from
+        # https://nlp.stanford.edu/projects/glove/
+        # save it in data/models and unzip it
+        embed = torch.nn.Embedding(vocab.size(), VOCAB_EMBED_DIM, padding_idx=0)
+
+        # word embedded using
+        embed_loader = Word_Embedding(GLOVE_PATH, vocab)
+        vectors = embed_loader.load_my_vecs(VOCAB_EMBED_DIM)
+        pretrained_weight = embed_loader.add_unknown_words_by_avg(
+            vectors, VOCAB_EMBED_DIM
+        )
+        embed.weight.data.copy_(torch.Tensor(pretrained_weight))
+        embed.weight.requires_grad = embed_train
+
+        # get testing data paths
+        test_s2s_path = os.path.join(
+            self.dir, "proquest_sapgraph_test.s2s.tfidf.jsonl"
+        )
+        test_w2s_path = os.path.join(
+            self.dir, "proquest_sapgraph_test.w2s.tfidf.jsonl"
+        )
+
+        # initialize model
+        model_s2s = WSWGAT(
+            in_dim=VOCAB_EMBED_DIM,
+            out_dim=SENT_ENT_NODE_EMBED_DIM,
+            num_heads=NUM_HEADS,
+            attn_drop_out=0.1,
+            ffn_inner_hidden_size=HIDDEN_SIZE_FFN,
+            ffn_drop_out=0.1,
+            feat_embed_size=EDGE_EMBED_DIM,
+            layerType="S2S",
+        )
+
+        # get datasets
+        dataset = DatasetAll(
+            self.test_data_path,
+            vocab,
+            MAX_SENTENCE_NUM,
+            MAX_TOKEN_NUM,
+            MAX_ENTITY_NUM,  # fixme; the article doesn't mention a number for this
+            self.vocab_fp,
+            test_w2s_path,
+            test_s2s_path,
+            SIM_THRESHOLD,  # fixme; the article doesn't mention a number for this
+        )
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=BATCH_SIZE,
+            shuffle=True,
+            num_workers=32,
+            collate_fn=graph_collate_fn,
+        )
+        model_name = "evalbestmodel"
+
+        self.run_test(model_s2s, dataset, loader, model_name)
+
+    def process(self) -> None:
+        """
+        Preprocesses the data, trains, and evaluates the model.
+        """
+        # preprocess the data
+        print("Preprocessing data...")
+        self.preprocess()
+
+        # concatenate the data
+        print("\tConcatenating cal-edge data...")
+        self.concat_cal_edge()
+
+        # train the model
+        print("Training model...")
+        self.train_model()
+
+        # evaluate the model
+        print("Evaluating model...")
+        self.evaluate_model()
 
     def summarize_articles(self) -> None:
         """

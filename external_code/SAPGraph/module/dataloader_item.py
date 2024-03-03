@@ -1,10 +1,7 @@
 #!/usr/bin/python
 """This file contains code to read the train/eval/test data from file and process it, and read the vocab data from file and process it"""
 
-import dgl
 import numpy as np
-import torch
-import torch.utils.data
 from nltk.corpus import stopwords
 
 
@@ -262,20 +259,3 @@ class DatasetItem(object):
             if len(article_words) < max_len:
                 article_words.extend([pad_id] * (max_len - len(article_words)))
             self.enc_sec_name_pad.append(article_words)
-
-
-def graph_collate_fn(samples):
-    """
-    :param batch: (G, input_pad)
-    :return:
-    """
-    graphs, index = map(list, zip(*samples))
-    graph_len = [
-        len(g.filter_nodes(lambda nodes: nodes.data["dtype"] == 1))
-        for g in graphs
-    ]  # sent node of graph
-    sorted_len, sorted_index = torch.sort(
-        torch.LongTensor(graph_len), dim=0, descending=True
-    )
-    batched_graph = dgl.batch([graphs[idx] for idx in sorted_index])
-    return batched_graph, [index[idx] for idx in sorted_index]

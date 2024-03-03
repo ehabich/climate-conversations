@@ -6,8 +6,6 @@ import sys
 import numpy as np
 from rouge import Rouge
 
-from .logger import *
-
 
 sys.setrecursionlimit(10000)
 
@@ -71,7 +69,6 @@ def eval_label(match_true, pred, true, total, match):
         F = 2 * precision * recall / (precision + recall)
     except ZeroDivisionError:
         accu, precision, recall, F = 0.0, 0.0, 0.0, 0.0
-        logger.error("[Error] float division by zero")
     return accu, precision, recall, F
 
 

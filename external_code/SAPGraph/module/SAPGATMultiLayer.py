@@ -6,9 +6,6 @@ import torch.nn as nn
 from external_code.SAPGraph.module.SAPGATLayer import SGATLayer
 
 
-######################################### StackLayer #########################################
-
-
 class MultiHeadSGATLayer(nn.Module):
     def __init__(
         self,

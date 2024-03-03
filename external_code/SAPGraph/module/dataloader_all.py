@@ -522,6 +522,7 @@ class DatasetAll(torch.utils.data.IterableDataset):
         ):
             if index >= iter_start and index < iter_end:
                 data["summary"] = data.setdefault("summary", [])
+                print(data)
 
                 example = DatasetItem(
                     data["text"],
