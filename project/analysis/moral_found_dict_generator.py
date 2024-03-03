@@ -47,7 +47,7 @@ def load_and_expand_moral_foundations_dictionary(
                     cats = [
                         moral_foundations_dict.get(cat, cat)
                         for cat in moral_found_code
-                    ]  # Ensure to get the category or keep the original
+                    ]  
                     word_to_moral_foundation[moral_found] = cats
                 line_counter += 1
 
