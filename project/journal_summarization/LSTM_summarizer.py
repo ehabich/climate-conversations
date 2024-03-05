@@ -13,6 +13,23 @@ Creates summaries by using the following steps:
        SUMMARY_LENGTH sentences) with the highest weights to create the summary.
        Order the sentences by their appearance in the article.
 
+Model Metrics/Parameters
+    - Loss: Mean Squared Error
+    - Optimizer: Adam
+    - Activation: Linear
+    - Callbacks: ReduceLROnPlateau, LambdaCallback
+    - Batch size: 8 (dev), 64 (prod)
+    - Training epochs: 10 (dev), 25 (prod)
+    - Learning rate: 1e-3 (initial), 1e-6 (min)
+    - LSTM units: 50
+    - Dense units: 1
+
+Model Outcomes
+    - Introduction model: Test Loss: 0.0137
+    - Method model: Test Loss: 0.0123
+    - Result model: Test Loss: 0.0131
+    - Conclusion model: Test Loss: 0.0101
+
 Authors: Chanteria Milner
 """
 
@@ -26,7 +43,7 @@ from nltk.tokenize import sent_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.callbacks import LambdaCallback
+from tensorflow.keras.callbacks import LambdaCallback, ReduceLROnPlateau
 from tensorflow.keras.layers import LSTM, Dense, Input, Masking, TimeDistributed
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
@@ -41,7 +58,7 @@ from project.utils.constants import (
     MODEL_PATH,
     SECTION_HEADERS_MAPPING,
 )
-from project.utils.functions import load_file_to_df
+from project.utils.functions import load_file_to_df, save_df_to_file
 
 
 # model attributes
@@ -61,6 +78,8 @@ class LSTMSummarizer:
         file_path (str): the path to the file containing the articles.
         dev_environment (bool): whether the model is being developed.
         training (bool): whether the model is being trained.
+        load_presaved_dset (bool): whether to load a presaved dataset.
+        load_presaved_models (bool): whether to load presaved models.
     """
 
     def __init__(
@@ -68,13 +87,11 @@ class LSTMSummarizer:
         file_path=CLEANED_PROQUEST_FILE,
         dev_environment: bool = True,
         training=True,
+        load_presaved_dset=False,
+        load_presaved_models=False,
     ):
-        self.lstm_model_dict = {
-            "Introduction": None,
-            "Method": None,
-            "Result": None,
-            "Conclusion": None,
-        }
+        self.load_presaved_dset = load_presaved_dset
+        self.load_presaved_models = load_presaved_models
 
         if not training:
             # the models should exist; load them
@@ -84,11 +101,9 @@ class LSTMSummarizer:
 
         self.tokenizer = None
         self.dev_environment = dev_environment
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu"
-        )
-        self.training_epochs = 10 if self.dev_environment else 50
-        self.batch_size = 8 if self.dev_environment else 32
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.training_epochs = 10 if self.dev_environment else 25
+        self.batch_size = 8 if self.dev_environment else 64
 
         # datasets
         self.df = load_file_to_df(file_path)
@@ -101,82 +116,131 @@ class LSTMSummarizer:
         ]
         if self.dev_environment:
             # shuffle the data
-            self.df = self.df.sample(
-                frac=1, random_state=RANDOM_STATE
-            ).reset_index(drop=True)
+            self.df = self.df.sample(frac=1, random_state=RANDOM_STATE).reset_index(
+                drop=True
+            )
 
             # get a random sample of the data
             self.df = self.df.sample(SAMPLE_SIZE)
             self.df.reset_index(drop=True, inplace=True)
         self.subset_df = self.df.loc[:, ["text", "abstract"]]
-        self.dset = {
-            "Introduction": {
-                "Raw": [],
-                "Abstracts": [],
-                "Embedded": [],
-                "Targets": [],
-            },
-            "Method": {
-                "Raw": [],
-                "Abstracts": [],
-                "Embedded": [],
-                "Targets": [],
-            },
-            "Result": {
-                "Raw": [],
-                "Abstracts": [],
-                "Embedded": [],
-                "Targets": [],
-            },
-            "Conclusion": {
-                "Raw": [],
-                "Abstracts": [],
-                "Embedded": [],
-                "Targets": [],
-            },
-        }
-        self.train_test_split = {
-            "Introduction": {
-                "max_sentence_length": 0,
-                "max_article_length": 0,
-                "X_train": None,
-                "y_train": None,
-                "X_test": None,
-                "y_test": None,
-                "X_valid": None,
-                "y_valid": None,
-            },
-            "Method": {
-                "max_sentence_length": 0,
-                "max_article_length": 0,
-                "X_train": None,
-                "y_train": None,
-                "X_test": None,
-                "y_test": None,
-                "X_valid": None,
-                "y_valid": None,
-            },
-            "Result": {
-                "max_sentence_length": 0,
-                "max_article_length": 0,
-                "X_train": None,
-                "y_train": None,
-                "X_test": None,
-                "y_test": None,
-                "X_valid": None,
-                "y_valid": None,
-            },
-            "Conclusion": {
-                "max_sentence_length": 0,
-                "max_article_length": 0,
-                "X_train": None,
-                "y_train": None,
-                "X_test": None,
-                "y_test": None,
-                "X_valid": None,
-                "y_valid": None,
-            },
-        }
+
+        if load_presaved_dset:
+            self.get_presaved_dset()
+        else:
+            self.dset = {
+                "Introduction": {
+                    "Raw": [],
+                    "Abstracts": [],
+                    "Embedded": [],
+                    "Targets": [],
+                },
+                "Method": {
+                    "Raw": [],
+                    "Abstracts": [],
+                    "Embedded": [],
+                    "Targets": [],
+                },
+                "Result": {
+                    "Raw": [],
+                    "Abstracts": [],
+                    "Embedded": [],
+                    "Targets": [],
+                },
+                "Conclusion": {
+                    "Raw": [],
+                    "Abstracts": [],
+                    "Embedded": [],
+                    "Targets": [],
+                },
+            }
+            self.train_test_split = {
+                "Introduction": {
+                    "max_sentence_length": 0,
+                    "max_article_length": 0,
+                    "X_train": None,
+                    "y_train": None,
+                    "X_test": None,
+                    "y_test": None,
+                    "X_valid": None,
+                    "y_valid": None,
+                },
+                "Method": {
+                    "max_sentence_length": 0,
+                    "max_article_length": 0,
+                    "X_train": None,
+                    "y_train": None,
+                    "X_test": None,
+                    "y_test": None,
+                    "X_valid": None,
+                    "y_valid": None,
+                },
+                "Result": {
+                    "max_sentence_length": 0,
+                    "max_article_length": 0,
+                    "X_train": None,
+                    "y_train": None,
+                    "X_test": None,
+                    "y_test": None,
+                    "X_valid": None,
+                    "y_valid": None,
+                },
+                "Conclusion": {
+                    "max_sentence_length": 0,
+                    "max_article_length": 0,
+                    "X_train": None,
+                    "y_train": None,
+                    "X_test": None,
+                    "y_test": None,
+                    "X_valid": None,
+                    "y_valid": None,
+                },
+            }
+
+        if load_presaved_models:
+            self.get_presaved_models()
+        else:
+            self.lstm_model_dict = {
+                "Introduction": None,
+                "Method": None,
+                "Result": None,
+                "Conclusion": None,
+            }
+
+    def get_presaved_dset(self) -> None:
+        """
+        Loads the presaved test-train-valid split dataset.
+        """
+        # load the test-train-valid split datasets
+        print("\t\tLoading test-train-valid split datasets...")
+        ttv_df = load_file_to_df(
+            os.path.join(
+                MODEL_PATH,
+                "intermediary_data",
+                "train_test_split_after_introduction.pickle",
+            )
+        )
+        for section in ["method", "result", "conclusion"]:
+            df = load_file_to_df(
+                os.path.join(
+                    MODEL_PATH,
+                    "intermediary_data",
+                    f"train_test_split_after_{section}.pickle",
+                )
+            )
+            ttv_df = pd.merge(ttv_df, df, on="index")
+
+        ttv_df.index = ttv_df["index"]
+        ttv_df.drop(columns="index", inplace=True)
+        self.train_test_split = ttv_df.to_dict()
+
+    def get_presaved_models(self) -> None:
+        """
+        Loads the presaved LSTM models.
+        """
+        for section in self.lstm_model_dict:
+            model_path = os.path.join(MODEL_PATH, f"{section}_lstm.h5")
+            self.lstm_model_dict[section] = load_model(model_path)
 
     def extract_sections(self, article_text: str) -> dict:
         """
@@ -199,7 +263,9 @@ class LSTMSummarizer:
             for header in headers:
                 pattern = re.escape(header)
                 header_patterns.append(pattern)
-        headers_regex = rf"(?:\d+\s*\.?\s*)?({'|'.join(header_patterns)})(?::?\s+)(?=[\dA-Z])"
+        headers_regex = (
+            rf"(?:\d+\s*\.?\s*)?({'|'.join(header_patterns)})(?::?\s+)(?=[\dA-Z])"
+        )
 
         # split the text into sections based on headers_regex
         sections = re.split(headers_regex, article_text)
@@ -211,9 +277,7 @@ class LSTMSummarizer:
         # organize sections into a dictionary based on SECTION_HEADERS_MAPPING
         categories = list(SECTION_HEADERS_MAPPING.keys())
         prev_category = None
-        normalized_sections = {
-            category: [] for category in SECTION_HEADERS_MAPPING
-        }
+        normalized_sections = {category: [] for category in SECTION_HEADERS_MAPPING}
         for i in range(0, len(sections), 2):
             header, text = sections[i], sections[i + 1].strip()
             for category, headers in SECTION_HEADERS_MAPPING.items():
@@ -297,6 +361,8 @@ class LSTMSummarizer:
 
         # embedd the sentences in each article
         for section in self.dset:
+            print(f"\t\tPreparing the {section} sections...")
+
             # embedd article sentences
             embedded_articles = [
                 [encoder.encode(sentence) for sentence in article]
@@ -310,13 +376,9 @@ class LSTMSummarizer:
                     article[i] = np.append(norm_order, embedding)
 
             # pad article sections to have a uniform length
-            max_article_length = max(
-                len(article) for article in embedded_articles
-            )
+            max_article_length = max(len(article) for article in embedded_articles)
             max_sentence_length = max(
-                len(sentence)
-                for article in embedded_articles
-                for sentence in article
+                len(sentence) for article in embedded_articles for sentence in article
             )
             padded_articles = pad_sequences(
                 [np.array(article) for article in embedded_articles],
@@ -328,16 +390,34 @@ class LSTMSummarizer:
             self.dset[section]["Embedded"] = padded_articles
 
             # save the max sentence and article length
-            self.train_test_split[section][
-                "max_sentence_length"
-            ] = max_sentence_length
-            self.train_test_split[section][
-                "max_article_length"
-            ] = max_article_length
+            self.train_test_split[section]["max_sentence_length"] = max_sentence_length
+            self.train_test_split[section]["max_article_length"] = max_article_length
+
+            # save intermediary results
+            dset_df = pd.DataFrame(self.dset).reset_index()
+            save_df_to_file(
+                dset_df.loc[:, ["index", section]],
+                os.path.join(
+                    MODEL_PATH,
+                    "intermediary_data",
+                    f"dset_after_{section.lower()}.pickle",
+                ),
+            )
 
             # get the targets
             self.dset[section]["Targets"] = self.get_targets(
                 self.dset[section]["Abstracts"], self.dset[section]["Embedded"]
+            )
+
+            # save the dataset for intermediary use
+            dset_df = pd.DataFrame(self.dset).reset_index()
+            save_df_to_file(
+                dset_df.loc[:, ["index", section]],
+                os.path.join(
+                    MODEL_PATH,
+                    "intermediary_data",
+                    f"dset_after_{section.lower()}.pickle",
+                ),
             )
 
             # train-test-valid split
@@ -357,6 +437,17 @@ class LSTMSummarizer:
             self.train_test_split[section]["X_valid"] = X_valid
             self.train_test_split[section]["y_valid"] = y_valid
 
+            # save the test-train-split for intermediary use
+            ttv_df = pd.DataFrame(self.train_test_split).reset_index()
+            save_df_to_file(
+                ttv_df.loc[:, ["index", section]],
+                os.path.join(
+                    MODEL_PATH,
+                    "intermediary_data",
+                    f"train_test_split_after_{section.lower()}.pickle",
+                ),
+            )
+
     def train_lstm(self, section: str) -> None:
         """
         Trains the LSTM model for a given category.
@@ -369,6 +460,9 @@ class LSTMSummarizer:
             on_epoch_end=lambda epoch, logs: print(
                 f"\t\tEpoch {epoch + 1}: Training Loss: {logs['loss']}, Validation Loss: {logs['val_loss']}"
             )
+        )
+        reduce_lr = ReduceLROnPlateau(
+            monitor="val_loss", factor=0.2, patience=5, min_lr=1e-6
         )
 
         # pull the data
@@ -390,9 +484,7 @@ class LSTMSummarizer:
         lstm_out = LSTM(units=50, return_sequences=True)(
             masked
         )  # return_sequences=True to keep sentence-level outputs
-        sentence_importance = TimeDistributed(Dense(1, activation="linear"))(
-            lstm_out
-        )  # assuming binary importance score; adjust activation for your task
+        sentence_importance = TimeDistributed(Dense(1, activation="linear"))(lstm_out)
 
         lstm_model = Model(inputs=inputs, outputs=sentence_importance)
         lstm_model.compile(optimizer="adam", loss="mean_squared_error")
@@ -405,7 +497,7 @@ class LSTMSummarizer:
             epochs=self.training_epochs,
             validation_data=(X_valid, y_valid),
             batch_size=self.batch_size,
-            callbacks=[print_callback],
+            callbacks=[print_callback, reduce_lr],
         )
 
         # evaluate the model
@@ -414,7 +506,7 @@ class LSTMSummarizer:
 
         # save the model
         self.lstm_model_dict[section] = lstm_model
-        lstm_model.save(os.path.join(MODEL_PATH, f"{section}_lstm.h5"))
+        lstm_model.save(os.path.join(MODEL_PATH, f"{section}_lstm.keras"))
 
     def train(self) -> None:
         """
@@ -423,14 +515,16 @@ class LSTMSummarizer:
         """
         # load the data
         print("Loading data...")
-        self.preprocess()
-        self.prepare_datasets()
+        if not self.load_presaved_dset and not self.load_presaved_models:
+            self.preprocess()
+            self.prepare_datasets()
 
         # train the LSTM models
         print("Training LSTM models...")
-        for section in self.train_test_split:
-            print(f"\tTraining {section} model...")
-            self.train_lstm(section)
+        if not self.load_presaved_models:
+            for section in self.train_test_split:
+                print(f"\tTraining {section} model...")
+                self.train_lstm(section)
 
     def summarize(self, article_text: str) -> str:
         """
@@ -488,9 +582,9 @@ class LSTMSummarizer:
             )
 
             # predict importance scores
-            importance_scores = self.lstm_model_dict[section].predict(
-                padded_sentences
-            )[0]
+            importance_scores = self.lstm_model_dict[section].predict(padded_sentences)[
+                0
+            ]
 
             # calculate remaining sentences to select based on total limit
             remaining_sentences_to_select = SUMMARY_LENGTH - sentences_selected
@@ -512,9 +606,7 @@ class LSTMSummarizer:
         # sort the sentences by their normalized orders before compiling the
         # summary
         summary_sentences_with_order.sort(key=lambda x: x[1])
-        summary_sentences = [
-            sentence for sentence, _ in summary_sentences_with_order
-        ]
+        summary_sentences = [sentence for sentence, _ in summary_sentences_with_order]
 
         # combine selected sentences to form the summary
         summary = " ".join(summary_sentences)
