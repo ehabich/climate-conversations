@@ -21,7 +21,7 @@ Model Metrics/Parameters
     - Batch size: 8 (dev), 64 (prod)
     - Training epochs: 10 (dev), 25 (prod)
     - Learning rate: 1e-3 (initial), 1e-6 (min)
-    - LSTM units: 50
+    - LSTM units: 30
     - Dense units: 1
 
 Model Outcomes
@@ -45,7 +45,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import LambdaCallback, ReduceLROnPlateau
 from tensorflow.keras.layers import LSTM, Dense, Input, Masking, TimeDistributed
-from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.models import Model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 
@@ -85,23 +85,18 @@ class LSTMSummarizer:
     def __init__(
         self,
         file_path=CLEANED_PROQUEST_FILE,
-        dev_environment: bool = True,
-        training=True,
-        load_presaved_dset=False,
-        load_presaved_models=False,
+        dev_environment: bool = False,
+        load_presaved_dset=True,
+        load_presaved_models=True,
     ):
         self.load_presaved_dset = load_presaved_dset
         self.load_presaved_models = load_presaved_models
 
-        if not training:
-            # the models should exist; load them
-            for section in self.lstm_model_dict:
-                model_path = os.path.join(MODEL_PATH, f"{section}_lstm.h5")
-                self.lstm_model_dict[section] = load_model(model_path)
-
         self.tokenizer = None
         self.dev_environment = dev_environment
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() else "cpu"
+        )
         self.training_epochs = 10 if self.dev_environment else 25
         self.batch_size = 8 if self.dev_environment else 64
 
@@ -116,9 +111,9 @@ class LSTMSummarizer:
         ]
         if self.dev_environment:
             # shuffle the data
-            self.df = self.df.sample(frac=1, random_state=RANDOM_STATE).reset_index(
-                drop=True
-            )
+            self.df = self.df.sample(
+                frac=1, random_state=RANDOM_STATE
+            ).reset_index(drop=True)
 
             # get a random sample of the data
             self.df = self.df.sample(SAMPLE_SIZE)
@@ -197,15 +192,15 @@ class LSTMSummarizer:
                 },
             }
 
+        self.lstm_model_dict = {
+            "Introduction": None,
+            "Method": None,
+            "Result": None,
+            "Conclusion": None,
+        }
+
         if load_presaved_models:
             self.get_presaved_models()
-        else:
-            self.lstm_model_dict = {
-                "Introduction": None,
-                "Method": None,
-                "Result": None,
-                "Conclusion": None,
-            }
 
     def get_presaved_dset(self) -> None:
         """
@@ -239,8 +234,16 @@ class LSTMSummarizer:
         Loads the presaved LSTM models.
         """
         for section in self.lstm_model_dict:
-            model_path = os.path.join(MODEL_PATH, f"{section}_lstm.h5")
-            self.lstm_model_dict[section] = load_model(model_path)
+            model_weights_path = os.path.join(
+                MODEL_PATH, "weights", f"{section}_lstm_weights.h5"
+            )
+            input_shape = (
+                self.train_test_split[section]["max_article_length"],
+                EMBEDDING_DIM + 1,
+            )
+            lstm_model = self.create_model_architecture(input_shape)
+            lstm_model.load_weights(model_weights_path)
+            self.lstm_model_dict[section] = lstm_model
 
     def extract_sections(self, article_text: str) -> dict:
         """
@@ -263,9 +266,7 @@ class LSTMSummarizer:
             for header in headers:
                 pattern = re.escape(header)
                 header_patterns.append(pattern)
-        headers_regex = (
-            rf"(?:\d+\s*\.?\s*)?({'|'.join(header_patterns)})(?::?\s+)(?=[\dA-Z])"
-        )
+        headers_regex = rf"(?:\d+\s*\.?\s*)?({'|'.join(header_patterns)})(?::?\s+)(?=[\dA-Z])"
 
         # split the text into sections based on headers_regex
         sections = re.split(headers_regex, article_text)
@@ -277,7 +278,9 @@ class LSTMSummarizer:
         # organize sections into a dictionary based on SECTION_HEADERS_MAPPING
         categories = list(SECTION_HEADERS_MAPPING.keys())
         prev_category = None
-        normalized_sections = {category: [] for category in SECTION_HEADERS_MAPPING}
+        normalized_sections = {
+            category: [] for category in SECTION_HEADERS_MAPPING
+        }
         for i in range(0, len(sections), 2):
             header, text = sections[i], sections[i + 1].strip()
             for category, headers in SECTION_HEADERS_MAPPING.items():
@@ -376,9 +379,13 @@ class LSTMSummarizer:
                     article[i] = np.append(norm_order, embedding)
 
             # pad article sections to have a uniform length
-            max_article_length = max(len(article) for article in embedded_articles)
+            max_article_length = max(
+                len(article) for article in embedded_articles
+            )
             max_sentence_length = max(
-                len(sentence) for article in embedded_articles for sentence in article
+                len(sentence)
+                for article in embedded_articles
+                for sentence in article
             )
             padded_articles = pad_sequences(
                 [np.array(article) for article in embedded_articles],
@@ -390,8 +397,12 @@ class LSTMSummarizer:
             self.dset[section]["Embedded"] = padded_articles
 
             # save the max sentence and article length
-            self.train_test_split[section]["max_sentence_length"] = max_sentence_length
-            self.train_test_split[section]["max_article_length"] = max_article_length
+            self.train_test_split[section][
+                "max_sentence_length"
+            ] = max_sentence_length
+            self.train_test_split[section][
+                "max_article_length"
+            ] = max_article_length
 
             # save intermediary results
             dset_df = pd.DataFrame(self.dset).reset_index()
@@ -448,6 +459,30 @@ class LSTMSummarizer:
                 ),
             )
 
+    def create_model_architecture(self, input_shape: tuple) -> Model:
+        """
+        Creates the LSTM model architecture.
+
+        parameters:
+            input_shape (tuple): the input shape of the model.
+
+        returns:
+            Model: the LSTM model.
+        """
+        inputs = Input(shape=input_shape)
+        masked = Masking(mask_value=0.0)(inputs)
+        lstm_out = LSTM(units=30, return_sequences=True)(
+            masked
+        )  # return_sequences=True to keep sentence-level outputs
+        sentence_importance = TimeDistributed(Dense(1, activation="linear"))(
+            lstm_out
+        )
+
+        lstm_model = Model(inputs=inputs, outputs=sentence_importance)
+        lstm_model.compile(optimizer="adam", loss="mean_squared_error")
+
+        return lstm_model
+
     def train_lstm(self, section: str) -> None:
         """
         Trains the LSTM model for a given category.
@@ -479,15 +514,7 @@ class LSTMSummarizer:
             EMBEDDING_DIM + 1,
         )
 
-        inputs = Input(shape=input_shape)
-        masked = Masking(mask_value=0.0)(inputs)  # 0.0 is the padding value
-        lstm_out = LSTM(units=50, return_sequences=True)(
-            masked
-        )  # return_sequences=True to keep sentence-level outputs
-        sentence_importance = TimeDistributed(Dense(1, activation="linear"))(lstm_out)
-
-        lstm_model = Model(inputs=inputs, outputs=sentence_importance)
-        lstm_model.compile(optimizer="adam", loss="mean_squared_error")
+        lstm_model = self.create_model_architecture(input_shape)
         lstm_model.summary()
 
         # train model
@@ -506,7 +533,7 @@ class LSTMSummarizer:
 
         # save the model
         self.lstm_model_dict[section] = lstm_model
-        lstm_model.save(os.path.join(MODEL_PATH, f"{section}_lstm.keras"))
+        lstm_model.save(os.path.join(MODEL_PATH, f"{section}_lstm.h5"))
 
     def train(self) -> None:
         """
@@ -582,9 +609,9 @@ class LSTMSummarizer:
             )
 
             # predict importance scores
-            importance_scores = self.lstm_model_dict[section].predict(padded_sentences)[
-                0
-            ]
+            importance_scores = self.lstm_model_dict[section].predict(
+                padded_sentences
+            )[0]
 
             # calculate remaining sentences to select based on total limit
             remaining_sentences_to_select = SUMMARY_LENGTH - sentences_selected
@@ -606,7 +633,9 @@ class LSTMSummarizer:
         # sort the sentences by their normalized orders before compiling the
         # summary
         summary_sentences_with_order.sort(key=lambda x: x[1])
-        summary_sentences = [sentence for sentence, _ in summary_sentences_with_order]
+        summary_sentences = [
+            sentence for sentence, _ in summary_sentences_with_order
+        ]
 
         # combine selected sentences to form the summary
         summary = " ".join(summary_sentences)
