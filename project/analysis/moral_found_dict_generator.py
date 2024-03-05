@@ -22,13 +22,13 @@ def load_and_expand_moral_foundations_dictionary(
 ):
     """
     Expands a moral foundations dictionary with similar words using embeddings.
-    
+
     Args:
         dic_file_path (str): Path to the original dictionary.
         embedding_model (str): Model for word embeddings.
         similarity_threshold (float): Threshold for word similarity.
         num_words_to_expand (int): Number of similar words to find.
-        
+
     Returns:
         dict: Expanded dictionary mapping words to moral foundations.
     """
@@ -92,12 +92,12 @@ def load_and_expand_moral_foundations_dictionary(
 def swap_keys_values(d):
     """
     Swaps keys with values in a dictionary, keeping unique values only.
-    Keep the number of total values in the expanded dictionary below 30 for 
+    Keep the number of total values in the expanded dictionary below 30 for
     each foundation.
-    
+
     Args:
         d (dict): Dictionary to swap.
-        
+
     Returns:
         dict: Dictionary with swapped keys and values.
     """
@@ -149,6 +149,7 @@ def main():
         tot_words,
         "entries and dumped to JSON.",
     )
+
 
 if __name__ == "__main__":
     main()
