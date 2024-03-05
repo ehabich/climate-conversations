@@ -1,7 +1,13 @@
-import os
+"""
+Loads Processed Data for Visualization
 
+Author(s): Kathryn Link-Oberstar
+"""
+import os
 import pandas as pd
 
+HURRICANE_START = pd.to_datetime('2022-09-23')
+HURRICANE_END = pd.to_datetime('2022-09-30')
 
 def load_comments():
     parent_directory = os.path.abspath(os.path.join(os.getcwd(), ".."))
@@ -74,8 +80,19 @@ def df_processor(full_df):
             "Ingroup_Agg",
         ]
     ].idxmax(axis=1)
+
+    full_df['created_utc'] = pd.to_datetime(full_df['created_utc'], unit='s')  # Convert Unix timestamp to datetime
+    full_df['Hurricane_Period'] = full_df.apply(categorize_period, axis=1)
+
     return full_df
 
+def categorize_period(row):
+    if row['created_utc'] < HURRICANE_START:
+        return 'Before Hurricane'
+    elif HURRICANE_START <= row['created_utc'] <= HURRICANE_END:
+        return 'During Hurricane'
+    else:
+        return 'After Hurricane'
 
 def main():
     comments_df = load_comments()

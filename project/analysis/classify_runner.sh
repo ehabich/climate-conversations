@@ -17,6 +17,7 @@ export INPUT_DATA_FILE_PATH="project/data_collection/project_data/tokenized_clim
 export COL_TO_TOKENIZE='Body'
 export SUBREDDIT='None'
 export TOKENIZE='False'
+export TYPE='comment'
 
 # Pass vars to the python script
-python3 moral_strength_classifier.py --filepath ${INPUT_DATA_FILE_PATH} --col_to_tokenize ${COL_TO_TOKENIZE} --subreddit ${SUBREDDIT} --tokenize ${TOKENIZE}
+python3 moral_strength_classifier.py --filepath ${INPUT_DATA_FILE_PATH} --col_to_tokenize ${COL_TO_TOKENIZE} --subreddit ${SUBREDDIT} --tokenize ${TOKENIZE} --type ${TYPE}
