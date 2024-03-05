@@ -6,6 +6,7 @@ Author: Jennifer Yeaton
 
 # import nltk; nltk.download('stopwords')
 import argparse
+from bertopic import BERTopic
 import re
 import os
 import sys
@@ -13,16 +14,24 @@ import numpy as np
 import pandas as pd
 from pprint import pprint
 import gensim
-import gensim.corpora as corpora
-from gensim.utils import simple_preprocess
-from gensim.models import CoherenceModel
+
+# import gensim.corpora as corpora
+# from gensim.utils import simple_preprocess
+# from gensim.models import CoherenceModel
 import spacy
 import pickle
-import pyLDAvis
+
+# import pyLDAvis
 
 # import pyLDAvis.gensim  # don't skip this
 import matplotlib.pyplot as plt
 import logging
+
+parent_directory = os.path.abspath(os.path.join(os.getcwd(), ".."))
+sys.path.append(parent_directory)
+
+from project.utils.constants import TOKENIZED_DATA_PATH
+from project.utils.functions import load_file_to_df, save
 
 logging.basicConfig(
     format="%(asctime)s : %(levelname)s : %(message)s", level=logging.ERROR
@@ -31,6 +40,7 @@ logging.basicConfig(
 import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+from sklearn.feature_extraction.text import CountVectorizer
 
 
 def pre_process_lda(tokenized_comments):
@@ -193,13 +203,14 @@ def evaluate_lda(lda_model, data_lemmatized, id2word):
     print("\nLDA Coherence Score: ", coherence_lda)
 
 
-def pre_process_bert():
+def pre_process_bertopic(tokenized_comments):
     """
-    Pre
+    Cast "body" column of dataframe of tokenized comments to list.
     """
+    return tokenized_comments.body.values.tolist()
 
 
-def run_bertopic():
+def run_bertopic(corpus_as_list):
     """
     https://maartengr.github.io/BERTopic/index.html
 
@@ -207,12 +218,21 @@ def run_bertopic():
 
     https://towardsdatascience.com/interactive-topic-modeling-with-bertopic-1ea55e7d73d8
     """
+    vectorizer_model = CountVectorizer(stop_words="english")
+    topic_model = BERTopic(vectorizer_model=vectorizer_model, nr_topics=20)
+    topic, probs = topic_model.fit_transform(corpus_as_list)
+
+    # save model
+    topic_model.save(
+        "reddit_all_comments_20_topic_model", serialization="pickle"
+    )
+
+    return topic, probs, topic_model
 
 
 def visualize_bertopic():
     """
     https://maartengr.github.io/BERTopic/getting_started/visualization/visualization.html#visualize-topics-per-class
-
 
     """
 
@@ -243,7 +263,7 @@ def parse_arguments():
         "--model",
         type=str,
         required=True,
-        help="Model to use: either 'lda' or 'bertopic'.",
+        help="Model to use: either lda or bertopic.",
     )
 
     # parser.add_argument('--filename', type=str, required=True, help='Name of the file to save the tokenized data to.')
@@ -252,37 +272,27 @@ def parse_arguments():
 
 
 if __name__ == "__main__":
+
+    print("Parsing arguments!")
     args = parse_arguments()
 
     # Initialize logging
-    # logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.INFO)
 
-    # Define parent_directory ### WAIT WILL THIS WORK???
-
-    print("Child directory before join: ", os.getcwd())
-    parent_directory = os.path.abspath(
-        os.path.join(os.getcwd(), "..", "data", "tokenized")
-    )
     print("Parent directory before file path creation: ", parent_directory)
 
-    # Construct the full path to tokenized pickle file
-    file_path = os.path.join(
-        parent_directory,
-        "tokenized_climateskeptics_sub_comments.pickle",  # CHANGE HARD CODE TO AN INPUT
-    )
-
-    print("File path prior to opening tokenized_comments is: ", file_path)
-
-    # Try to open the file using the full path
-    with open(file_path, "rb") as f:
-        tokenized_comments = pickle.load(f)
+    tokenized_comments = load_file_to_df(args.filepath)
+    print("Read in tokenized comments!")
 
     if args.model == "lda":
+        print("Calling LDA pre-processing and model!")
         corpus, id2word, data_lemmatized = pre_process_lda(tokenized_comments)
         lda_model, doc_lda = run_lda(corpus, id2word)
         evaluate_lda(lda_model, data_lemmatized, id2word)
     else:
-        ____ = run_bertopic()
+        print("Calling BERTopic pre-processing and model!")
+        corpus_as_list = pre_process_bertopic(tokenized_comments)
+        topic, probs, topic_model = run_bertopic(corpus_as_list)
 
     # tokenizer = Tokenizer(filepath=args.filepath, filename=args.filename)
     # tokenizer.process(cols_to_tokenize=[("title", "tokenized_title")])
