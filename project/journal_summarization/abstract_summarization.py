@@ -3,7 +3,7 @@
 Implement Hugging Face abstractive summarization.
 Fine-Tune on journal abstracts --> titles.
 
-Authors: Kate Habich, Chanteria Milner
+Authors: Kate Habich
 Adapted from HuggingFace Abstractive Summarization Tutorial with TensorFlow.
 https://huggingface.co/docs/transformers/en/tasks/summarization
 https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/summarization-tf.ipynb#scrollTo=kTCFado4IrIc
