@@ -1,11 +1,9 @@
-import ast
+import os
 
 import pandas as pd
 
 
-def load_file_to_df(
-    filepath: str, load_tokenized=False, tokenized_cols=None
-) -> pd.DataFrame:
+def load_file_to_df(filepath: str) -> pd.DataFrame:
     """
     Loads a file into a dataframe.
 
@@ -29,12 +27,10 @@ def load_file_to_df(
         df = pd.read_excel(filepath)
     elif ext in ["fea", "feather"]:
         df = pd.read_feather(filepath)
+    elif ext in ["parquet", "pq"]:
+        df = pd.read_parquet(filepath)
     else:
         raise ValueError(f"File type {ext} not supported.")
-
-    if load_tokenized:
-        for col in tokenized_cols:
-            df[col] = df[col].apply(ast.literal_eval)
 
     return df
 
@@ -57,5 +53,7 @@ def save(df: pd.DataFrame, filepath: str) -> None:
         df.to_excel(filepath, index=False)
     elif ext in ["fea", "feather"]:
         df.to_feather(filepath)
+    elif ext in ["parquet", "pq"]:
+        df.to_parquet(filepath)
     else:
         raise ValueError(f"File type {ext} not supported.")
