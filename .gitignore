@@ -10,6 +10,7 @@ project/data/
 __pycache__/
 *.py[cod]
 *$py.class
+/project/visualization/cache-directory
 
 # C extensions
 *.so
