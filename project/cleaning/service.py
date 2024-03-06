@@ -9,7 +9,7 @@ import pandas as pd
 
 from project.cleaning.proquest_clean import ProquestCleaner
 from project.utils.constants import CLEANED_DATA_PATH, RAW_DATA_PATH
-from project.utils.functions import save
+from project.utils.functions import save_df_to_file
 
 
 def concat_climate_articles() -> None:
@@ -18,7 +18,7 @@ def concat_climate_articles() -> None:
     """
     # grab data files
     proquest_files = glob.glob(
-        os.path.join(RAW_DATA_PATH, "ES-journals_*.parquet")
+        os.path.join(RAW_DATA_PATH, "proquest", "ES-journals_*.parquet")
     )
 
     # load data
@@ -28,9 +28,9 @@ def concat_climate_articles() -> None:
     proquest_df = pd.concat(proquest_dfs, ignore_index=True)
 
     # save data
-    save(
+    save_df_to_file(
         proquest_df,
-        os.path.join(RAW_DATA_PATH, "ES-journals.parquet"),
+        os.path.join(RAW_DATA_PATH, "proquest", "ES-journals.parquet"),
     )
 
 
@@ -39,15 +39,21 @@ def run_proquest_clean() -> None:
     Cleans data exported from Proquest TDM.
     """
     # ensure concatenated data file exists
-    if not os.path.exists(os.path.join(RAW_DATA_PATH, "ES-journals.parquet")):
+    if not os.path.exists(
+        os.path.join(RAW_DATA_PATH, "proquest", "ES-journals.parquet")
+    ):
         concat_climate_articles()
 
     cleaner = ProquestCleaner(
-        os.path.join(RAW_DATA_PATH, "ES-journals.parquet")
+        os.path.join(RAW_DATA_PATH, "proquest", "ES-journals.parquet")
     )
 
     cleaner.clean()
-    save(
+    if not os.path.exists(os.path.join(CLEANED_DATA_PATH, "proquest")):
+        os.makedirs(os.path.join(CLEANED_DATA_PATH, "proquest"))
+    save_df_to_file(
         cleaner.cleaned_df,
-        os.path.join(CLEANED_DATA_PATH, "ES-journals_cleaned.parquet"),
+        os.path.join(
+            CLEANED_DATA_PATH, "proquest", "ES-journals_cleaned.parquet"
+        ),
     )
