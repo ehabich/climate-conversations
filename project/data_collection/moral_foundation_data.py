@@ -3,6 +3,7 @@ Loads Processed Data for Visualization
 
 Author(s): Kathryn Link-Oberstar
 """
+=======
 import os
 
 import pandas as pd
@@ -21,7 +22,6 @@ SUBREDDITS = [
     "politics",
     "worldnews",
 ]
-
 
 def load_comments():
     parent_directory = os.path.abspath(os.path.join(os.getcwd(), ".."))
@@ -144,6 +144,11 @@ def main():
     comments_df = load_comments()
     submissions_df = load_submissions()
     results_df = comment_results_processor(comments_df)
+    return full_df
+
+def main():
+    comments_df = load_comments()
+    submissions_df = load_submissions()
 
     print("Comments DataFrame:")
     print(comments_df.head())

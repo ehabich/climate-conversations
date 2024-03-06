@@ -33,6 +33,7 @@ def load_and_expand_moral_foundations_dictionary(
         dict: Expanded dictionary mapping words to moral foundations.
     """
     # Download word embeddings, or retrieve saved embeddings if they exist
+    
     if os.path.exists("wordvectors.kv"):
         model = KeyedVectors.load("wordvectors.kv")
     else:
@@ -63,6 +64,8 @@ def load_and_expand_moral_foundations_dictionary(
                 line_counter += 1
 
     word_to_moral_foundation_expanded = word_to_moral_foundation.copy()
+    # word_to_moral_foundation_expanded_swap = swap_keys_values(word_to_moral_foundation_expanded)
+    # print(word_to_moral_foundation_expanded_swap)
     expanded_dictionary = {}
 
     # Retrieve the top N related words, check that they are above the similarity threshold and then add to the expanded dictionary

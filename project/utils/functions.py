@@ -15,6 +15,8 @@ def load_file_to_df(filepath: str) -> pd.DataFrame:
     returns:
         df (pd.DataFrame): dataframe of the file.
     """
+    if tokenized_cols is None:
+        tokenized_cols = []
     ext = filepath.split(".")[-1].lower()
 
     if ext in ["pickle", "pkl"]:
@@ -33,7 +35,7 @@ def load_file_to_df(filepath: str) -> pd.DataFrame:
     return df
 
 
-def save(df: pd.DataFrame, filepath: str) -> None:
+def save_df_to_file(df: pd.DataFrame, filepath: str) -> None:
     """
     Saves the given dataframe out to the specified filepath.
 
@@ -41,10 +43,7 @@ def save(df: pd.DataFrame, filepath: str) -> None:
         df (pd.DataFrame): dataframe to save.
         filepath (str): path to save the dataframe to.
     """
-    ext = filepath.split(".")[-1]
-
-    if not os.path.exists(os.path.dirname(filepath)):
-        os.makedirs(os.path.dirname(filepath))
+    ext = filepath.split(".")[-1].lower()
 
     if ext in ["pickle", "pkl"]:
         df.to_pickle(filepath)
