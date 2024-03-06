@@ -5,6 +5,7 @@ Generates summaries of articles based on categories of interest.
 Authors: Kate Habich, Jen Yeaton
 '''
 import project.data
+import 
 
 class ProfileGenerator:
 
@@ -38,6 +39,10 @@ class ProfileGenerator:
 
     def _make_long_summary():
         summarizer = LSTMSummarizer(dev_environment=False, load_presaved_model=True)
+
+    def _make_short_summary():
+        
+        pass
 
 
     def generate_profile():
