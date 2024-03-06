@@ -27,13 +27,14 @@ class Tokenizer:
 
     def __init__(
         self,
-        filepath,
-        filename,
+        filepath=None,
+        filename=None,
     ):
-        self.df = load_file_to_df(filepath)
-        self.filename = filename
         self.tokenized_df = None
-        self.savepath = os.path.join(TOKENIZED_DATA_PATH, self.filename)
+        if filepath:
+            self.df = load_file_to_df(filepath)
+            self.filename = filename
+            self.savepath = os.path.join(TOKENIZED_DATA_PATH, self.filename)
 
     @staticmethod
     def tokenize_and_normalize(text: str, extra_stop: list = None) -> dict:
