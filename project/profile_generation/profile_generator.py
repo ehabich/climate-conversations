@@ -35,7 +35,11 @@ class ProfileGenerator:
     #     topics_df = topic_model.weights2df()
     #     topic_words_column = topics_df.Representation
     #     return topic_words_column
-        pass
+        
+        return pd.DataFrame({'name': ['topic1', 
+                                      'topic2'],
+                             'Representation': [['climate', 'ocean', 'heat'], 
+                                                ['meat', 'animal', 'vegeterian']]})
 
     def _collect_moral_foundations(self):
         '''
@@ -61,8 +65,9 @@ class ProfileGenerator:
         vectors = np.array([model[words] for word in words if \
                             word in model])
 
-        concat_topic_vector = np.mean(vectors, axis=0) if (len(vectors) > 0) & \
-            (vectors is not None) else np.zeros(model.vector_size)
+        concat_topic_vector = np.mean(vectors, axis=0) 
+        # if (len(vectors) > 0) & \
+        #     (vectors is not None) else np.zeros(model.vector_size)
       
         return concat_topic_vector
 
@@ -72,7 +77,8 @@ class ProfileGenerator:
         vectors = np.array([model[keyword] for keyword in keywords if \
                             keyword in model])
 
-        concat_vector = np.mean(vectors, axis=0) if (len(vectors) > 0) & (vectors is not None) else np.zeros(model.vector_size)
+        concat_vector = np.mean(vectors, axis=0) 
+        # if (len(vectors) > 0) & (vectors is not None) else np.zeros(model.vector_size)
       
         return concat_vector
     
@@ -89,7 +95,12 @@ class ProfileGenerator:
         '''
         sim = np.dot(topic_vec, keyword_vec) / \
             (np.linalg.norm(topic_vec) * np.linalg.norm(keyword_vec))
-        return sim
+        
+        int_similarity = np.round(sim * 1000000).astype(int)
+        if not isinstance(int_similarity, np.int64):
+            # print("found non-int")
+            int_similarity = None
+        return int_similarity
 
     def _select_articles(self, topic_vector, keywords_vec_df, article_data_path):
         """
@@ -97,19 +108,50 @@ class ProfileGenerator:
         topic and keywords.
         """
         print("cosine")
-        print(keywords_vec_df.columns)
+        # print(keywords_vec_df)
+        # print(topic_vector)
+        print()
+        # print(keywords_vec_df.columns)
+        print(keywords_vec_df.loc[0,'keyword_vectors'])
+        
+        print('done')
         keywords_vec_df['cosine_sim'] = keywords_vec_df['keyword_vectors'].apply(
-                                    partial(self._calc_cosine_similarity, 
-                                            topic_vector))
-        print(keywords_vec_df.loc[0:3,'cosine_sim'])
-        print(keywords_vec_df['cosine_sim'].sort_values())
+                                        partial(self._calc_cosine_similarity, 
+                                                topic_vector))
+        non_numeric_values = [type(x) for x in keywords_vec_df['cosine_sim'] if not isinstance(x, np.int64)]
+        # print("Non-numeric values in 'cosine_sim':", non_numeric_values)
+        print(non_numeric_values)
+        print(len(non_numeric_values))
+        
+        # keywords_vec_df['cosine_sim'] = keywords_vec_df['keyword_vectors'].apply(
+        #                                 partial(isinstance, 
+        #                                         int))
+        # print(keywords_vec_df.loc[not keywords_vec_df['cosine_sim'], :])
+        # keywords_vec_df = keywords_vec_df.drop(9675)
+        # keywords_vec_df = keywords_vec_df[keywords_vec_df['cosine_sim'].apply(lambda x: not isinstance(x, np.ndarray))]
+
+        
+        # print(keywords_vec_df.loc[0:3,'cosine_sim'])
+        # print(keywords_vec_df.columns)
+        # print("weird type:", type(keywords_vec_df.loc[9675, 'cosine_sim']))
+        # print(keywords_vec_df.loc[9675, 'cosine_sim'])
         # article_data_w_cosine_sim = pd.concat([keywords_vec_df, cosine_sim_calcs], 
         #                                       axis=1)
         # top_articles = article_data_w_cosine_sim.sort_values(by="cosine_sim_calc", 
         #                                                      ascending=False).head(self.num_journals)
-        top_article_df = keywords_vec_df.sort_values('cosine_sim', 
-                                                    ascending=False
-                                        ).head(self.num_journals)
+        # keywords_vec_df['cosine_sim'] = pd.to_numeric(keywords_vec_df['cosine_sim'])
+        print(type(keywords_vec_df))
+        
+        keywords_vec_df['cosine_sim'] = pd.Series(keywords_vec_df['cosine_sim'])
+
+        # top_article_df = keywords_vec_df.dropna(subset=['cosine_sim']
+        #                                 ).sort_values(by = 'cosine_sim',
+        #                                             ascending=False,
+        #                                             inplace = True
+        #                                 ).head(self.num_journals)
+        
+        top_article_df = keywords_vec_df.nlargest(self.num_journals, 
+                                                  'cosine_sim')
         
         article_data = pd.read_feather(article_data_path)
         top_articles = article_data.loc[article_data['doi'].isin(
@@ -124,43 +166,44 @@ class ProfileGenerator:
         summary = summarizer.summarize(document)
         return summary
 
-    def _make_short_summary(self, document):
-        # model_save_path = '/project/models/small_weights/'
-        # summarizer = AbstractSummarizer(None,
-        #                         model_save_path,
-        #                         read_from_external = True)
 
-        # summary = summarizer.summarize(document)
-        # return summary
-        pass
+    def _make_short_summary(self, document):
+        model_save_path = '/project/models/small_weights/'
+        summarizer = AbstractSummarizer(None,
+                                model_save_path,
+                                read_from_external = True)
+
+        summary = summarizer.summarize(document)
+        return summary
 
 
     def generate_printout(self, moral_foundations, top_articles, topic_words):
         """
         Create a printout for each of the top 10 topics discussed pertaining to climate change.
         """
-        # topic_vector = self._create_topic_vector(topic)
-        # moral_foundations = self._collect_moral_foundations(topic_vector) #WHAT FORMAT WILL THE MORAL FOUNDATIONS BE IN?
-        #unpack moral foundations (MAKING UP THIS SYNTAX, UNCLEAR OF RETURN FROM collect_moral_foundations)
         moral_foundation1 = moral_foundations[0]
         moral_foundation2 = moral_foundations[1]
-        # top self.num_journals journal articles
-        # top_articles = self._select_articles(topic_vector, keywords_vec_df)
-        # create output, including:
-        # topic area words
-        f"The representative words for this topic area are {topic_words} \n."
+
+        # Create Output
+        topic_rep = f"The representative words for this topic area are {topic_words} \n."
         # top two moral foundations to focus on
-        f"The top two moral foundations to focus on when communicating about this topic area are {moral_foundation1} and {moral_foundation2} \n."
+        moral_founds = f"The top two moral foundations to focus on when communicating about this topic area are {moral_foundation1} and {moral_foundation2} \n."
         # top self.num_journals of journal articles you can read to learn more about the topic: REVISE
-        f"The top {self.num_journals} journal articles most representative of this topic area with their short and long summaries are: \n"
+        num_sum = f"The top {self.num_journals} journal articles most representative of this topic area with their short and long summaries are: \n"
         # make summaries for each article
+        output = topic_rep + moral_founds + num_sum
         for article in top_articles:
             short_summary_string = self._make_short_summary(top_articles['abstract'])
             long_summary_string = self._make_long_summary(top_articles)
             # short summary of each of the above articles: REVISE
-            f"Short summary: \n {short_summary_string} \n ."
+            short_sum = f"Short summary: \n {short_summary_string} \n ."
             # long summary of each of the above articles: REVISE
-            f"Long summary: \n {long_summary_string} \n ."
+            long_sum = f"Long summary: \n {long_summary_string} \n ."
+
+            output += short_sum
+            output += long_sum
+
+        return output
 
 
     def _generate_profile(self, model, topic):
@@ -184,7 +227,8 @@ class ProfileGenerator:
         """
         model = api.load("glove-wiki-gigaword-50")
         print("Word2Vec model loaded")
-        keyword_df = self._collect_keywords('project/data/proquest_data_cleaned.fea')
+        article_data_path = 'project/data/proquest_data_cleaned.fea'
+        keyword_df = self._collect_keywords(article_data_path)
         keywords_vec_df = self._create_all_keyword_vectors(model, keyword_df)
 
         # TODO: topics should be entire topics dataframe  (nrows = 10, ncols = ~3)
@@ -203,13 +247,16 @@ class ProfileGenerator:
         keyword_df = self._collect_keywords(article_data_path)
         keywords_vec_df = self._create_all_keyword_vectors(model, keyword_df)
 
+        print(keywords_vec_df.loc[0,'keyword_vectors'])
+
         topic_vector = np.random.rand(50) # for testing only
         selected_articles = self._select_articles(topic_vector, 
                                                   keywords_vec_df, 
                                                   article_data_path)
-        print(selected_articles )
+        
     
         return selected_articles
+        # return
 
         # topics = self._collect_topics()
         # for topic in topics:
