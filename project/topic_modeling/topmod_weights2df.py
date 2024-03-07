@@ -21,6 +21,7 @@ class Topic_Model_Class:
 
     def __init__(self, model_weights_file_path):
         self.model_weights_file_path = model_weights_file_path
+        self.topic_model = None
 
     def weights2df(self):
         """
@@ -34,10 +35,15 @@ class Topic_Model_Class:
             model_df_representation(df): Dataframe containing the model weights.
         """
 
-        topic_model = BERTopic.load(self.model_weights_file_path)
+        self.topic_model = BERTopic.load(self.model_weights_file_path)
         model_df_representation = topic_model.get_topic_info()
 
         return model_df_representation
 
     def visualize(self):
-        pass
+        """
+        https://maartengr.github.io/BERTopic/getting_started/visualization/visualization.html#visualize-topics-per-class
+
+        """
+        self.topic_model.visualize_barchart()
+        self.topic_model.visualize_topics()
