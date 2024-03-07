@@ -4,6 +4,7 @@ Generates summaries of articles based on categories of interest.
 
 Authors: Kate Habich, Jen Yeaton
 '''
+import os
 import project.data
 import numpy as np
 import pandas as pd
@@ -12,6 +13,7 @@ from project.utils.functions import load_file_to_df
 # from project.topic_modeling.topmod_weights2df import Topic_Model_Class
 from project.journal_summarization.LSTM_summarizer import LSTMSummarizer
 from project.journal_summarization.abstract_summarization import AbstractSummarizer
+
 from gensim.models import Word2Vec
 from gensim.models import KeyedVectors
 import gensim.downloader as api
@@ -21,27 +23,30 @@ class ProfileGenerator:
 
     def __init__(self, num_articles):
         self.num_journals = num_articles
-        self.moral_foundations = self._collect_moral_foundations()
+        # self.moral_foundations = self._collect_moral_foundations()
         self.topics = self._collect_topics()
 
 
     def _collect_topics(self):
-    #     '''
-    #     Collects all 10 topics and returns df of lists of words comprising 
-    #     each topic.
-    #     '''
-    #     model_weights_file_path = 'project/topic_modeling/reddit_all_comments_10_topmod'
-    #     topic_model = Topic_Model_Class(model_weights_file_path)
-    #     topics_df = topic_model.weights2df()
-    #     topic_words_column = topics_df.Representation
-    #     return topic_words_column
+        '''
+        Collects all 10 topics and returns df of lists of words comprising 
+        each topic.
+        '''
+        model_weights_file_path = 'project/topic_modeling/reddit_all_comments_10_topmod'
+        # topic_model = Topic_Model_Class(model_weights_file_path)
+        # topics_df = topic_model.weights2df()
+ 
+        # indices_of_topics_to_keep = [0, 1, 2, 5, 7, 9, 10, 12, 16, 18]
+        # topic_model_rows_df = topics_df.loc[indices_of_topics_to_keep]
+        # # topic_words_column = topic_model_rows_df.Representation
+        # return topic_model_rows_df
         
         return pd.DataFrame({'name': ['topic1', 
                                       'topic2'],
                              'Representation': [['climate', 'ocean', 'heat'], 
                                                 ['meat', 'animal', 'vegeterian']]})
 
-    def _collect_moral_foundations(self):
+    def _collect_moral_foundations(self, topic):
         '''
         Returns list of top 2 moral foundations
         '''
@@ -107,39 +112,11 @@ class ProfileGenerator:
         Selects top num_articles articles based on cosine similarity between 
         topic and keywords.
         """
-        print("cosine")
-        # print(keywords_vec_df)
-        # print(topic_vector)
-        print()
-        # print(keywords_vec_df.columns)
-        print(keywords_vec_df.loc[0,'keyword_vectors'])
-        
-        print('done')
         keywords_vec_df['cosine_sim'] = keywords_vec_df['keyword_vectors'].apply(
                                         partial(self._calc_cosine_similarity, 
                                                 topic_vector))
-        non_numeric_values = [type(x) for x in keywords_vec_df['cosine_sim'] if not isinstance(x, np.int64)]
-        # print("Non-numeric values in 'cosine_sim':", non_numeric_values)
-        print(non_numeric_values)
-        print(len(non_numeric_values))
-        
-        # keywords_vec_df['cosine_sim'] = keywords_vec_df['keyword_vectors'].apply(
-        #                                 partial(isinstance, 
-        #                                         int))
-        # print(keywords_vec_df.loc[not keywords_vec_df['cosine_sim'], :])
-        # keywords_vec_df = keywords_vec_df.drop(9675)
-        # keywords_vec_df = keywords_vec_df[keywords_vec_df['cosine_sim'].apply(lambda x: not isinstance(x, np.ndarray))]
-
-        
-        # print(keywords_vec_df.loc[0:3,'cosine_sim'])
-        # print(keywords_vec_df.columns)
-        # print("weird type:", type(keywords_vec_df.loc[9675, 'cosine_sim']))
-        # print(keywords_vec_df.loc[9675, 'cosine_sim'])
-        # article_data_w_cosine_sim = pd.concat([keywords_vec_df, cosine_sim_calcs], 
-        #                                       axis=1)
-        # top_articles = article_data_w_cosine_sim.sort_values(by="cosine_sim_calc", 
-        #                                                      ascending=False).head(self.num_journals)
-        # keywords_vec_df['cosine_sim'] = pd.to_numeric(keywords_vec_df['cosine_sim'])
+        # non_numeric_values = [type(x) for x in keywords_vec_df['cosine_sim'] if not isinstance(x, np.int64)]
+       
         print(type(keywords_vec_df))
         
         keywords_vec_df['cosine_sim'] = pd.Series(keywords_vec_df['cosine_sim'])
@@ -156,6 +133,7 @@ class ProfileGenerator:
         article_data = pd.read_feather(article_data_path)
         top_articles = article_data.loc[article_data['doi'].isin(
                                                 top_article_df['doi'].unique())]
+        print(top_articles.columns)
     
         return top_articles
 
@@ -168,11 +146,12 @@ class ProfileGenerator:
 
 
     def _make_short_summary(self, document):
-        model_save_path = '/project/models/small_weights/'
-        summarizer = AbstractSummarizer(None,
-                                model_save_path,
-                                read_from_external = True)
-
+        model_path = './project/data/models/small_weights/'
+        print(document)
+        print(os.listdir(model_path))
+        summarizer = AbstractSummarizer('hi', 
+                                        model_path, 
+                                        read_from_external = True)
         summary = summarizer.summarize(document)
         return summary
 
@@ -192,16 +171,17 @@ class ProfileGenerator:
         num_sum = f"The top {self.num_journals} journal articles most representative of this topic area with their short and long summaries are: \n"
         # make summaries for each article
         output = topic_rep + moral_founds + num_sum
-        for article in top_articles:
-            short_summary_string = self._make_short_summary(top_articles['abstract'])
+        print(type(top_articles))
+        for i in range(len(top_articles)):
+            print('ARTICLE:', i)
+            short_summary_string = self._make_short_summary(top_articles.loc[i, 'abstract'])
             long_summary_string = self._make_long_summary(top_articles)
-            # short summary of each of the above articles: REVISE
+
             short_sum = f"Short summary: \n {short_summary_string} \n ."
-            # long summary of each of the above articles: REVISE
-            long_sum = f"Long summary: \n {long_summary_string} \n ."
+            # long_sum = f"Long summary: \n {long_summary_string} \n ."
 
             output += short_sum
-            output += long_sum
+            # output += long_sum
 
         return output
 
@@ -247,16 +227,21 @@ class ProfileGenerator:
         keyword_df = self._collect_keywords(article_data_path)
         keywords_vec_df = self._create_all_keyword_vectors(model, keyword_df)
 
-        print(keywords_vec_df.loc[0,'keyword_vectors'])
+        topics = self._collect_topics()
 
-        topic_vector = np.random.rand(50) # for testing only
-        selected_articles = self._select_articles(topic_vector, 
+        for topic in topics['Representation']:
+            topic_vector = np.random.rand(50) # for testing only
+            # profile_info = self._generate_profile(model, topic)
+            selected_articles = self._select_articles(topic_vector, 
                                                   keywords_vec_df, 
-                                                  article_data_path)
+                                                  article_data_path).reset_index()
+            print(selected_articles)
+            moral_foundations = self._collect_moral_foundations(topic)
+            single_printout = self.generate_printout(moral_foundations, selected_articles, topic)
+            print(single_printout)
         
-    
-        return selected_articles
-        # return
+        # return selected_articles
+        return
 
         # topics = self._collect_topics()
         # for topic in topics:
@@ -264,11 +249,8 @@ class ProfileGenerator:
 
 
 
-
-
     # def __repr__(self):
-    #     s = f"Moral Foundations: {self.moral_foundations}\n \
-    #     Topics: {self.topics}\n \
+    #     s = f"Topics: {self.topics}\n \
     #     Number of articles: {self.num_journals}"
         
     #     return s
