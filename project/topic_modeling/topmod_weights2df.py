@@ -36,7 +36,7 @@ class Topic_Model_Class:
         """
 
         self.topic_model = BERTopic.load(self.model_weights_file_path)
-        model_df_representation = topic_model.get_topic_info()
+        model_df_representation = self.topic_model.get_topic_info()
 
         return model_df_representation
 
