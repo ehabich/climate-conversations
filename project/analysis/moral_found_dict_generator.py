@@ -21,8 +21,19 @@ def load_and_expand_moral_foundations_dictionary(
     num_words_to_expand=100,
 ):
     """
-    Loads & expands a moral foundations dictionary using a word embedding model.
+    Expands a moral foundations dictionary with similar words using embeddings.
+
+    Args:
+        dic_file_path (str): Path to the original dictionary.
+        embedding_model (str): Model for word embeddings.
+        similarity_threshold (float): Threshold for word similarity.
+        num_words_to_expand (int): Number of similar words to find.
+
+    Returns:
+        dict: Expanded dictionary mapping words to moral foundations.
     """
+    # Download word embeddings, or retrieve saved embeddings if they exist
+    
     if os.path.exists("wordvectors.kv"):
         model = KeyedVectors.load("wordvectors.kv")
     else:
@@ -34,6 +45,7 @@ def load_and_expand_moral_foundations_dictionary(
     moral_foundations_dict = {}
     word_to_moral_foundation = {}
 
+    # Read in the base dictionary to expand
     with open(dic_file_path, "r", encoding="utf-8") as file:
         line_counter = 0
         for line in file:
@@ -56,6 +68,7 @@ def load_and_expand_moral_foundations_dictionary(
     # print(word_to_moral_foundation_expanded_swap)
     expanded_dictionary = {}
 
+    # Retrieve the top N related words, check that they are above the similarity threshold and then add to the expanded dictionary
     for word, categories in word_to_moral_foundation.items():
         if word in model.key_to_index:
             print("word in model", word, categories)
@@ -80,6 +93,17 @@ def load_and_expand_moral_foundations_dictionary(
 
 
 def swap_keys_values(d):
+    """
+    Swaps keys with values in a dictionary, keeping unique values only.
+    Keep the number of total values in the expanded dictionary below 30 for
+    each foundation.
+
+    Args:
+        d (dict): Dictionary to swap.
+
+    Returns:
+        dict: Dictionary with swapped keys and values.
+    """
     swapped = {}
     for key, value_list in d.items():
         for value in value_list:
@@ -94,6 +118,9 @@ def swap_keys_values(d):
 
 
 def main():
+    """
+    Main function to load, expand, and save the expanded moral foundations dictionary.
+    """
     dic_file_path = "moral foundations dictionary.dic"
     embedding_model = "glove-twitter-200"
     similarity_threshold = 0.62
