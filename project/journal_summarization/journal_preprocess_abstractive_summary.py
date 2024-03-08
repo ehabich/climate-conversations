@@ -10,7 +10,7 @@ import pandas as pd
 
 def preprocess_journal_data():
     # Read in data
-    data = load_file_to_df('project/data/proquest_data_cleaned.fea')
+    data = pd.read_feather('project/data/proquest_data_cleaned.fea')
 
     # Select relevant columns and rows
     limited_data = data.loc[(data['title'].notnull()) & 
