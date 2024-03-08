@@ -1,3 +1,13 @@
+
+"""
+The module is designed to take reddit comments, optionally tokenize them,
+and then evaluate the similarity of the comment with each of the 5 moral
+foundations. It returns an updated dataframe with moral foundation similarity
+scores.
+
+Author(s): Kathryn Link-Oberstar
+"""
+
 import argparse
 import json
 import os
@@ -20,6 +30,9 @@ sys.path.append(parent_directory)
 from project.utils.classes.tokenizer import Tokenizer
 
 
+
+# Download word embeddings, or retrieve saved embeddings if they exist
+
 if os.path.exists("wordvectors.kv"):
     word_vectors = KeyedVectors.load("wordvectors.kv")
 else:
@@ -29,6 +42,45 @@ else:
     word_vectors.save("wordvectors.kv")
 
 print("Loaded Word Vectors!")
+
+
+# Load the data, unpickle and filter if necessary
+def load_data(
+    filepath,
+    subreddit=None,
+    col_to_tokenize=None,
+):
+    """
+    Loads and filters reddit comments data from a pickle file.
+
+    Args:
+        filepath (str): Path to the pickle file containing comments data.
+        subreddit (str, optional): Subreddit name to filter comments. Defaults to None.
+        col_to_tokenize (str, optional): Column name for tokenization. Defaults to None.
+
+    Returns:
+        DataFrame: Filtered dataframe with comments data.
+    """
+    pickle_file_path_comment = os.path.join(
+        parent_directory,
+        filepath,
+    )
+
+    with open(pickle_file_path_comment, "rb") as file:
+        comments_df = pickle.load(file)
+
+    if subreddit:
+        comments_df = comments_df[comments_df["subreddit"] == subreddit]
+
+    try:
+        token_key = f"tokenized_{col_to_tokenize.lower()}_words_norm"
+        comments_df = comments_df[
+            ~comments_df[token_key].isin(["[removed]", "[deleted]"])
+        ]
+    except:
+        print("Could not find removed or deleted entries")
+
+    if subreddit:
 
 
 def load_data(
@@ -56,6 +108,7 @@ def load_data(
         print("Could not find removed or deleted entries")
 
     if subreddit:
+
         print(f"Filtered data for {subreddit}!")
 
     else:
@@ -63,6 +116,20 @@ def load_data(
     return comments_df
 
 
+
+# Tokenize the comments if the argument is specified
+def tokenize_comments(df, subreddit, col_to_tokenize):
+    """
+    Tokenizes comments within the dataframe using specified column.
+
+    Args:
+        df (DataFrame): Dataframe containing comments to be tokenized.
+        subreddit (str): Name of the subreddit for tokenization scope.
+        col_to_tokenize (str): Column name in the dataframe to tokenize.
+
+    Returns:
+        DataFrame: Dataframe with tokenized comments.
+    """
 def tokenize_comments(df, subreddit, col_to_tokenize):
     pickle_path = f"comments_{subreddit}.pkl"
     token_pickle_path = f"tokenized_comments_{subreddit}.pkl"
@@ -77,6 +144,25 @@ def tokenize_comments(df, subreddit, col_to_tokenize):
     print("Tokenizer Complete!")
     return tokenizer.tokenized_df
 
+# Compute the similarity of a comment with the 5 moral foundations
+def compute_similarity(
+    comment, foundation_words_vec, similarity_threshold=0.25
+):
+    """
+    Computes similarity of each word in a comment with words in moral foundations.
+
+    Args:
+        comment (list): List of words in a comment.
+        foundation_words_vec (list): List of word vectors representing moral foundations.
+        similarity_threshold (float, optional): Threshold for counting similarity. Defaults to 0.25.
+
+    Returns:
+        float: Mean similarity score for the comment with moral foundations.
+    """
+    similarities = []
+    for word in comment:  # word in reddit comment
+        try:
+            word_vec = word_vectors[word]  # get embedding
 
 def compute_similarity(
     comment, foundation_words_vec, similarity_threshold=0.25
@@ -92,6 +178,7 @@ def compute_similarity(
                     np.linalg.norm(word_vec)
                     * np.linalg.norm(foundation_word_vec)
                 )
+                # Check if similarity above threshold to reduce noise
                 # Apply threshold
                 if sim >= similarity_threshold:
                     similarities.append(sim)
@@ -110,7 +197,7 @@ def classify_sentence_with_profile(sentence, moral_foundations_dict):
     for foundation, words in moral_foundations_dict.items():
         words_vec = []
         for word in words:
-            try:  # loop through moral foundation words
+            try:
                 word_vec = word_vectors[word]
                 words_vec.append(word_vec)
             except:
@@ -127,6 +214,19 @@ def main(
     col_to_tokenize=False,
     type="Undefined",
 ):
+    """
+    Main function to load, tokenize, and classify comments or submissions.
+
+    Args:
+        filepath (str): Path to data file.
+        subreddit (str, optional): Subreddit name. Defaults to None.
+        tokenize (bool, optional): Whether to tokenize the data. Defaults to False, assuming data was already tokenized.
+        col_to_tokenize (str, optional): Column to tokenize. Defaults to False.
+        type (str, optional): Type of the data (comment or submission). Defaults to "Undefined".
+
+    Returns:
+        DataFrame: Dataframe with classified comments or submissions.
+    """
     comments_df = load_data(
         filepath=filepath,
         subreddit=subreddit,
@@ -204,12 +304,18 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+
     # Handling optional string arguments that could be 'None'
     args.subreddit = None if args.subreddit == "None" else args.subreddit
     args.col_to_tokenize = (
         None if args.col_to_tokenize == "None" else args.col_to_tokenize
     )
-
+    # check for truthy values
+    if args.tokenize.lower() in ["true", "1", "t", "y", "yes"]:
+        tokenize = True
+    else:
+        tokenize = False
+        
     if args.tokenize.lower() in ["true", "1", "t", "y", "yes"]:
         tokenize = True
     else:

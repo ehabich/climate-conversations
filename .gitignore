@@ -1,3 +1,6 @@
+# Folders
+project/data/
+
 # IDE files and misc.
 .idea
 .vscode
@@ -7,6 +10,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+/project/visualization/cache-directory
 
 # C extensions
 *.so
