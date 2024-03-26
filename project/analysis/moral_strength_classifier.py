@@ -5,44 +5,30 @@ and then evaluate the similarity of the comment with each of the 5 moral
 foundations. It returns an updated dataframe with moral foundation similarity
 scores.
 
-Author(s): Kathryn Link-Oberstar
+Author: Kathryn Link-Oberstar
 """
-
 import argparse
 import json
 import os
 import pickle
 import sys
-
 import numpy as np
 import pandas as pd
 from gensim.models import KeyedVectors
-
-
-# EXAMPLE CLI RUN
-# poetry run python moral_strength_classifier.py --filepath project/data_collection/project_data/tokenized_climate_comments.pickle --col_to_tokenize body --subreddit climate --tokenize False --type Comment
-
-print("Finished Package Imports!")
 
 parent_directory = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
 sys.path.append(parent_directory)
 
 from project.utils.classes.tokenizer import Tokenizer
 
-
-
 # Download word embeddings, or retrieve saved embeddings if they exist
-
 if os.path.exists("wordvectors.kv"):
     word_vectors = KeyedVectors.load("wordvectors.kv")
 else:
     import gensim.downloader as api
-
     word_vectors = api.load("glove-twitter-200")
     word_vectors.save("wordvectors.kv")
-
 print("Loaded Word Vectors!")
-
 
 # Load the data, unpickle and filter if necessary
 def load_data(
@@ -81,40 +67,11 @@ def load_data(
         print("Could not find removed or deleted entries")
 
     if subreddit:
-
-
-def load_data(
-    filepath,
-    subreddit=None,
-    col_to_tokenize=None,
-):
-    pickle_file_path_comment = os.path.join(
-        parent_directory,
-        filepath,
-    )
-
-    with open(pickle_file_path_comment, "rb") as file:
-        comments_df = pickle.load(file)
-
-    if subreddit:
-        comments_df = comments_df[comments_df["subreddit"] == subreddit]
-
-    try:
-        token_key = f"tokenized_{col_to_tokenize.lower()}_words_norm"
-        comments_df = comments_df[
-            ~comments_df[token_key].isin(["[removed]", "[deleted]"])
-        ]
-    except:
-        print("Could not find removed or deleted entries")
-
-    if subreddit:
-
         print(f"Filtered data for {subreddit}!")
-
     else:
         print("Filtered data!")
+    
     return comments_df
-
 
 
 # Tokenize the comments if the argument is specified
@@ -130,7 +87,6 @@ def tokenize_comments(df, subreddit, col_to_tokenize):
     Returns:
         DataFrame: Dataframe with tokenized comments.
     """
-def tokenize_comments(df, subreddit, col_to_tokenize):
     pickle_path = f"comments_{subreddit}.pkl"
     token_pickle_path = f"tokenized_comments_{subreddit}.pkl"
     df.to_pickle(pickle_path)
@@ -149,7 +105,7 @@ def compute_similarity(
     comment, foundation_words_vec, similarity_threshold=0.25
 ):
     """
-    Computes similarity of each word in a comment with words in moral foundations.
+    Computes the similarity of each word in a comment with words in moral foundations.
 
     Args:
         comment (list): List of words in a comment.
@@ -163,14 +119,6 @@ def compute_similarity(
     for word in comment:  # word in reddit comment
         try:
             word_vec = word_vectors[word]  # get embedding
-
-def compute_similarity(
-    comment, foundation_words_vec, similarity_threshold=0.25
-):
-    similarities = []
-    for word in comment:  # word in reddit comment
-        try:
-            word_vec = word_vectors[word]  # get the embedding
             for (
                 foundation_word_vec
             ) in foundation_words_vec:  # loop through moral foundation words
@@ -192,8 +140,16 @@ def compute_similarity(
 
 
 def classify_sentence_with_profile(sentence, moral_foundations_dict):
-    foundation_scores = {}
+    """
+    Computes similarity scores between a sentence and various moral foundations.
 
+    Args:
+        sentence (str): Sentence to classify
+        moral_foundations_dict (dict): {moral foundation: [keywords]} mapping
+
+    Returns:
+        dict: {moral foundation: similarity score} for each foundation.
+    """
     for foundation, words in moral_foundations_dict.items():
         words_vec = []
         for word in words:
@@ -303,7 +259,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-
 
     # Handling optional string arguments that could be 'None'
     args.subreddit = None if args.subreddit == "None" else args.subreddit
